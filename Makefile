@@ -17,7 +17,7 @@ INSTALL_DIR ?= $(HOME)/.local/bin
 
 GO_ENV      := CGO_ENABLED=0
 
-.PHONY: build test test-short lint release install clean fmt staticcheck
+.PHONY: build test test-short test-property lint release install clean fmt staticcheck
 
 build:
 	$(GO_ENV) go build -ldflags "$(LDFLAGS)" -o $(BINARY) $(PKG)
@@ -27,6 +27,9 @@ test:
 
 test-short:
 	$(GO_ENV) go test ./... -short -race
+
+test-property:
+	$(GO_ENV) go test ./test/property/... -race
 
 lint:
 	go vet ./...

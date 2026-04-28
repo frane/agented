@@ -243,7 +243,7 @@ func newViewCmd(a *App) *cobra.Command {
 			return a.emit(res)
 		},
 	}
-	c.Flags().StringVar(&rangeStr, "range", "", "Inclusive line range (e.g. 10:20)")
+	c.Flags().StringVarP(&rangeStr, "range", "r", "", "Inclusive line range (e.g. 10:20)")
 	return c
 }
 
@@ -330,8 +330,8 @@ type editFlags struct {
 }
 
 func attachEditFlags(c *cobra.Command, ef *editFlags) {
-	c.Flags().StringVar(&ef.expect, "expect", "", "Expected state_token from last view/write")
-	c.Flags().StringVar(&ef.text, "text", "", "Inline text")
+	c.Flags().StringVarP(&ef.expect, "expect", "x", "", "Expected state_token from last view/write")
+	c.Flags().StringVarP(&ef.text, "text", "t", "", "Inline text")
 	c.Flags().StringVar(&ef.textFile, "text-file", "", "Read text from this path")
 	c.Flags().BoolVar(&ef.fromStdin, "from-stdin", false, "Read text from stdin")
 	c.Flags().BoolVar(&ef.noTx, "no-transaction", false, "Bypass current transaction owner enforcement")
@@ -340,8 +340,8 @@ func attachEditFlags(c *cobra.Command, ef *editFlags) {
 
 // for replace, --with is the inline text; we still allow --text-file/--from-stdin.
 func attachReplaceFlags(c *cobra.Command, ef *editFlags) {
-	c.Flags().StringVar(&ef.expect, "expect", "", "Expected state_token from last view/write")
-	c.Flags().StringVar(&ef.text, "with", "", "Replacement text (alternative to --text-file/--from-stdin)")
+	c.Flags().StringVarP(&ef.expect, "expect", "x", "", "Expected state_token from last view/write")
+	c.Flags().StringVarP(&ef.text, "with", "w", "", "Replacement text (alternative to --text-file/--from-stdin)")
 	c.Flags().StringVar(&ef.textFile, "text-file", "", "Read replacement from this path")
 	c.Flags().BoolVar(&ef.fromStdin, "from-stdin", false, "Read replacement from stdin")
 	c.Flags().BoolVar(&ef.noTx, "no-transaction", false, "Bypass current transaction owner enforcement")
@@ -384,7 +384,7 @@ func newReplaceCmd(a *App) *cobra.Command {
 			return a.emit(res)
 		},
 	}
-	c.Flags().StringVar(&rangeStr, "range", "", "Line range to replace (e.g. 5:8)")
+	c.Flags().StringVarP(&rangeStr, "range", "r", "", "Line range to replace (e.g. 5:8)")
 	attachReplaceFlags(c, ef)
 	c.MarkFlagRequired("range")
 	return c
@@ -422,7 +422,7 @@ func newInsertCmd(a *App) *cobra.Command {
 			return a.emit(res)
 		},
 	}
-	c.Flags().IntVar(&after, "after", -1, "Insert after this line (0 = start)")
+	c.Flags().IntVarP(&after, "after", "a", -1, "Insert after this line (0 = start)")
 	attachEditFlags(c, ef)
 	return c
 }
@@ -459,7 +459,7 @@ func newDeleteCmd(a *App) *cobra.Command {
 			return a.emit(res)
 		},
 	}
-	c.Flags().StringVar(&rangeStr, "range", "", "Line range to delete")
+	c.Flags().StringVarP(&rangeStr, "range", "r", "", "Line range to delete")
 	attachEditFlags(c, ef)
 	c.MarkFlagRequired("range")
 	return c
@@ -709,7 +709,7 @@ func runAnnotAdd(a *App, path string, rest []string) error {
 	var stdin bool
 	for i := 0; i < len(rest); i++ {
 		switch rest[i] {
-		case "--text":
+		case "--text", "-t":
 			if i+1 < len(rest) {
 				text = rest[i+1]
 				i++
