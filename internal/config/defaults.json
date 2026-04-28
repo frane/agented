@@ -1,0 +1,44 @@
+{
+  "actor": "",
+  "concurrency": {
+    "require_expect": "writes"
+  },
+  "transactions": {
+    "auto_rollback_idle_for": "10m"
+  },
+  "stale": {
+    "buffer_idle_for": "14d",
+    "branch_idle_for": "7d"
+  },
+  "auto_prune": {
+    "enabled": true,
+    "on_close": true,
+    "on_open": false,
+    "schedule": "daily",
+    "policies": {
+      "closed_files_older_than": "30d",
+      "dead_branches_idle_for": "7d",
+      "keep_recent_per_branch": 200
+    }
+  },
+  "audit": {
+    "retention": "90d",
+    "auto_prune": true
+  },
+  "output": {
+    "default_format": "tab",
+    "include_state_token": true
+  },
+  "skill": {
+    "enforce_version": "major"
+  },
+  "mcp": {
+    "default_transport": "stdio",
+    "tcp_port": 0,
+    "unix_socket_path": ""
+  },
+  "logging": {
+    "level": "info",
+    "destination": "stderr"
+  }
+}
