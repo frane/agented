@@ -1,0 +1,207 @@
+// Package cli wires the cobra command tree to the cmd Engine.
+package cli
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"io"
+	"os"
+
+	"github.com/spf13/cobra"
+
+	"github.com/frane/agented/internal/actor"
+	"github.com/frane/agented/internal/cmd"
+	"github.com/frane/agented/internal/config"
+	"github.com/frane/agented/internal/db"
+	"github.com/frane/agented/internal/store"
+	"github.com/frane/agented/internal/workspace"
+)
+
+// Build constructs the root cobra command with all subcommands wired up.
+// versionInfo carries -ldflags-supplied version metadata for `ae version`.
+func Build(versionInfo cmd.VersionInput, stdin io.Reader, stdout, stderr io.Writer) *cobra.Command {
+	app := &App{
+		Stdin:   stdin,
+		Stdout:  stdout,
+		Stderr:  stderr,
+		Version: versionInfo,
+	}
+	root := &cobra.Command{
+		Use:           "ae",
+		Short:         "Stateful editor for LLM agents.",
+		SilenceUsage:  true,
+		SilenceErrors: true,
+		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+			return app.preRun(cmd, args)
+		},
+		PersistentPostRunE: func(cmd *cobra.Command, args []string) error {
+			return app.postRun(cmd, args)
+		},
+	}
+	root.PersistentFlags().StringVar(&app.AsActor, "as", "", "Actor identity for this invocation (overrides AE_ACTOR and config)")
+	root.PersistentFlags().StringVar(&app.OutputFormat, "format", "", "Output format: tab | json")
+	root.PersistentFlags().BoolVar(&app.JSONFlag, "json", false, "Shortcut for --format=json")
+	root.PersistentFlags().BoolVar(&app.Header, "header", false, "Print a header line above tab output")
+	root.PersistentFlags().StringVar(&app.WorkspaceOverride, "workspace", "", "Path to .agented dir; overrides discovery")
+
+	registerVerbs(app, root)
+	return root
+}
+
+// App carries flags and lazy state for all CLI invocations.
+type App struct {
+	Stdin             io.Reader
+	Stdout, Stderr    io.Writer
+	Version           cmd.VersionInput
+
+	AsActor           string
+	OutputFormat      string
+	JSONFlag          bool
+	Header            bool
+	WorkspaceOverride string
+
+	// resolved during preRun
+	cfg     *config.Config
+	sources config.Sources
+	engine  *cmd.Engine
+	conn    *_dbHandle
+}
+
+type _dbHandle struct {
+	db   *coreDB
+	path string
+}
+
+type coreDB = struct {
+	closer func() error
+}
+
+// preRun resolves config/workspace/store/actor before each subcommand. We do
+// this here rather than in main so subcommands can run independently.
+func (a *App) preRun(c *cobra.Command, _ []string) error {
+	// Skip for the `init` and `version` and `who` and `config` subcommands
+	// when there's no workspace.
+	skip := map[string]bool{"init": true, "version": true}
+	name := c.Name()
+	if c.Parent() != nil && c.Parent().Name() == "config" {
+		// config subcommands don't need the engine fully wired (most don't).
+	}
+
+	// Resolve config first.
+	gpath := config.GlobalPath()
+	wsDir := a.WorkspaceOverride
+	var ppath string
+	if wsDir == "" {
+		cwd, err := os.Getwd()
+		if err != nil {
+			return err
+		}
+		dir, _, err := workspace.Locate(cwd)
+		if err != nil {
+			// Fallback: tolerate missing global dir for `ae version`/etc.
+			if !skip[name] {
+				return err
+			}
+		}
+		wsDir = dir
+	}
+	if wsDir != "" {
+		ppath = workspace.ConfigProjectPath(wsDir)
+	}
+	cfg, srcs, err := config.Resolve(gpath, ppath, nil)
+	if err != nil {
+		return err
+	}
+	a.cfg = cfg
+	a.sources = srcs
+	if a.OutputFormat == "" {
+		a.OutputFormat = cfg.Output.DefaultFormat
+	}
+	if a.JSONFlag {
+		a.OutputFormat = "json"
+	}
+
+	// Determine actor.
+	act, err := actor.Resolve(a.AsActor, cfg.Actor)
+	if err != nil {
+		return err
+	}
+
+	// Skip DB setup for verbs that don't need it.
+	if skip[name] {
+		a.engine = &cmd.Engine{Store: nil, Config: cfg, Actor: act, DBPath: ""}
+		return nil
+	}
+
+	if wsDir == "" {
+		return errors.New("no workspace found and no global path; run `ae init`")
+	}
+	if err := workspace.EnsureDir(wsDir); err != nil {
+		return err
+	}
+	dbPath := workspace.DBPath(wsDir)
+	conn, err := db.Open(dbPath)
+	if err != nil {
+		return err
+	}
+	a.conn = &_dbHandle{db: &coreDB{closer: conn.Close}, path: dbPath}
+	st := store.New(conn)
+	a.engine = &cmd.Engine{Store: st, Config: cfg, Actor: act, DBPath: dbPath}
+
+	// Skill version check (only when a skill is installed; warn-or-error per config).
+	if err := checkSkillVersion(a); err != nil {
+		return err
+	}
+
+	// Auto-maintenance (idle-tx auto-rollback, scheduled prune).
+	if err := a.engine.AutoMaintenance(); err != nil {
+		fmt.Fprintf(a.Stderr, "auto-maintenance: %v\n", err)
+	}
+	return nil
+}
+
+// postRun closes resources opened by preRun.
+func (a *App) postRun(_ *cobra.Command, _ []string) error {
+	if a.conn != nil && a.conn.db != nil && a.conn.db.closer != nil {
+		_ = a.conn.db.closer()
+	}
+	return nil
+}
+
+// Execute runs the root command with the provided args. Returns the exit code.
+func Execute(ctx context.Context, args []string, versionInfo cmd.VersionInput, stdin io.Reader, stdout, stderr io.Writer) int {
+	root := Build(versionInfo, stdin, stdout, stderr)
+	root.SetArgs(args)
+	root.SetIn(stdin)
+	root.SetOut(stdout)
+	root.SetErr(stderr)
+	if err := root.ExecuteContext(ctx); err != nil {
+		var ec *ExitError
+		if errors.As(err, &ec) {
+			fmt.Fprintln(stderr, "error:", ec.Err)
+			return ec.Code
+		}
+		fmt.Fprintln(stderr, "error:", err)
+		return 1
+	}
+	return 0
+}
+
+// ExitError carries an exit code along with an underlying error so the root
+// command can map domain errors to spec'd exit codes.
+type ExitError struct {
+	Code int
+	Err  error
+}
+
+// Error implements error.
+func (e *ExitError) Error() string {
+	if e.Err != nil {
+		return e.Err.Error()
+	}
+	return ""
+}
+
+// Unwrap supports errors.Is/As.
+func (e *ExitError) Unwrap() error { return e.Err }
