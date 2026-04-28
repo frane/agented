@@ -149,9 +149,15 @@ func (a *App) preRun(c *cobra.Command, _ []string) error {
 	st := store.New(conn)
 	a.engine = &cmd.Engine{Store: st, Config: cfg, Actor: act, DBPath: dbPath}
 
+	// Skill subcommands manage the skill itself; never refuse to run them
+	// because of a version mismatch on the very content they exist to fix.
+	underSkill := c.HasParent() && c.Parent().Name() == "skill"
+
 	// Skill version check (only when a skill is installed; warn-or-error per config).
-	if err := checkSkillVersion(a); err != nil {
-		return err
+	if !underSkill {
+		if err := checkSkillVersion(a); err != nil {
+			return err
+		}
 	}
 
 	// Auto-maintenance (idle-tx auto-rollback, scheduled prune).

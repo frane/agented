@@ -47,7 +47,9 @@ When two agents edit the same file at once, the second write rejects with a stat
 
 ## The skill
 
-Run `ae skill install` once and a `SKILL.md` lands in `~/.claude/skills/agented/`. The skill is half of why this works at all. It documents every verb in both forms, pairs every error with the recovery action, and walks through six full sessions covering the patterns that actually come up: read-modify-verify on a single function, a multi-file transactional refactor that rolls back when the tests fail, backtracking after a wrong turn, and leaving a handoff for the next session.
+Run `ae skill install` once and a `SKILL.md` lands in every detected client's skills directory plus the canonical `~/.agents/skills/agented/`. The default does the obvious thing: writes to `~/.agents/`, `~/.claude/skills/`, `~/.codex/skills/` if those clients are present (detected via home dir or binary on PATH). `ae skill list` shows where it's installed and at what version. `ae skill upgrade` re-installs to the same set after a binary update; `ae skill uninstall` removes only the `agented/` subfolder, never sibling skills. `--target <name>` (`agents`, `claude`, `codex`, `cursor`) picks one. `--scope project` writes inside the workspace instead. `--dry-run` shows what would happen.
+
+The skill is half of why this works at all. It documents every verb in both forms, pairs every error with the recovery action, and walks through six full sessions covering the patterns that actually come up: read-modify-verify on a single function, a multi-file transactional refactor that rolls back when the tests fail, backtracking after a wrong turn, and leaving a handoff for the next session.
 
 Annotations are worth their own paragraph because most people miss them on first read. They're per-file notes the agent leaves for whoever opens the file next. `ae open` returns them inline, so the first thing any new session sees is what previous sessions thought was worth remembering. An agent's working memory is whatever fits in its context window, and that memory ends when the session ends. Annotations are how it persists across that gap.
 

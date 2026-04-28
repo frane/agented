@@ -624,18 +624,24 @@ func TestScenario19_StorageReport(t *testing.T) {
 }
 
 // =====================================================================
-// 20. Skill install and version check
+// 20. Skill install writes a SKILL.md with version frontmatter (via the
+// `agents` target — the spec-canonical location, always written).
 // =====================================================================
 func TestScenario20_SkillInstall(t *testing.T) {
 	s := newSession(t)
-	tgt := filepath.Join(s.dir, "SKILL.md")
-	r := s.runOK("skill", "install", "--target", tgt)
-	if !strings.Contains(r.stdout, tgt) {
-		t.Errorf("install output: %s", r.stdout)
-	}
-	body, err := os.ReadFile(tgt)
-	if err != nil {
+	home := filepath.Join(s.dir, "home")
+	if err := os.MkdirAll(home, 0o755); err != nil {
 		t.Fatal(err)
+	}
+	s.envExt = []string{"HOME=" + home}
+	r := s.runOK("skill", "install", "--target", "agents", "--scope", "global")
+	want := filepath.Join(home, ".agents", "skills", "agented", "SKILL.md")
+	if !strings.Contains(r.stdout, "installed") {
+		t.Errorf("install output should report installed: %s", r.stdout)
+	}
+	body, err := os.ReadFile(want)
+	if err != nil {
+		t.Fatalf("expected SKILL.md at %s: %v", want, err)
 	}
 	if !strings.Contains(string(body), "version:") {
 		t.Errorf("frontmatter missing")

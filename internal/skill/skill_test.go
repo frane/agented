@@ -1,6 +1,7 @@
 package skill_test
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -71,24 +72,197 @@ func TestErrorRecoveryEntries(t *testing.T) {
 	}
 }
 
-func TestInstallStatus(t *testing.T) {
-	tgt := filepath.Join(t.TempDir(), "SKILL.md")
-	path, err := skill.Install(tgt)
+// TestInstallSelectedTarget exercises the new multi-target install API by
+// pointing HOME at a temp dir and writing only to the "claude" target.
+func TestInstallSelectedTarget(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	results, err := skill.Install(skill.InstallOptions{
+		Selected: "claude",
+		Scope:    skill.ScopeGlobal,
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if path == "" {
-		t.Error("empty install path")
+	if len(results) != 1 || results[0].Target != "claude" {
+		t.Fatalf("expected one result for claude, got %+v", results)
 	}
-	gotPath, ver, err := skill.Status(tgt)
+	if results[0].Status != skill.StatusInstalled {
+		t.Errorf("status: got %q want %q", results[0].Status, skill.StatusInstalled)
+	}
+	want := filepath.Join(home, ".claude", "skills", "agented", "SKILL.md")
+	if results[0].Path != want {
+		t.Errorf("path: got %q want %q", results[0].Path, want)
+	}
+	if _, err := os.Stat(want); err != nil {
+		t.Errorf("file should exist: %v", err)
+	}
+}
+
+// TestInstallAllAlwaysWritesAgents verifies the AlwaysWrite flag for the
+// agents target: even with no clients detected, agents/ is written.
+func TestInstallAllAlwaysWritesAgents(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("PATH", "")
+	results, err := skill.Install(skill.InstallOptions{
+		Selected: "all",
+		Scope:    skill.ScopeGlobal,
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if gotPath == "" {
-		t.Error("empty status path")
+	var agentsRes *skill.Result
+	for i := range results {
+		if results[i].Target == "agents" {
+			agentsRes = &results[i]
+		}
 	}
-	if ver != skill.Version {
-		t.Errorf("status version %q want %q", ver, skill.Version)
+	if agentsRes == nil {
+		t.Fatal("agents target missing from results")
+	}
+	if agentsRes.Status != skill.StatusInstalled {
+		t.Errorf("agents status: got %q want %q", agentsRes.Status, skill.StatusInstalled)
+	}
+	if _, err := os.Stat(filepath.Join(home, ".agents", "skills", "agented", "SKILL.md")); err != nil {
+		t.Errorf("agents SKILL.md should exist: %v", err)
+	}
+}
+
+func TestInstallUnchangedIsIdempotent(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	if _, err := skill.Install(skill.InstallOptions{Selected: "claude", Scope: skill.ScopeGlobal}); err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(home, ".claude", "skills", "agented", "SKILL.md")
+	st1, err := os.Stat(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	results, err := skill.Install(skill.InstallOptions{Selected: "claude", Scope: skill.ScopeGlobal})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if results[0].Status != skill.StatusUnchanged {
+		t.Errorf("status: got %q want %q", results[0].Status, skill.StatusUnchanged)
+	}
+	st2, err := os.Stat(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !st1.ModTime().Equal(st2.ModTime()) {
+		t.Errorf("mtime should be preserved when unchanged")
+	}
+}
+
+func TestInstallDryRun(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	results, err := skill.Install(skill.InstallOptions{
+		Selected: "claude",
+		Scope:    skill.ScopeGlobal,
+		DryRun:   true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if results[0].Status != skill.StatusWouldInstall {
+		t.Errorf("status: got %q want %q", results[0].Status, skill.StatusWouldInstall)
+	}
+	if _, err := os.Stat(filepath.Join(home, ".claude", "skills", "agented", "SKILL.md")); !os.IsNotExist(err) {
+		t.Errorf("dry-run wrote file: err=%v", err)
+	}
+}
+
+func TestInstallCursorRefusesGlobal(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	_, err := skill.Install(skill.InstallOptions{
+		Selected: "cursor",
+		Scope:    skill.ScopeGlobal,
+	})
+	if err == nil || !strings.Contains(err.Error(), "cursor has no global") {
+		t.Fatalf("expected cursor global error, got %v", err)
+	}
+}
+
+func TestUninstallRemovesOnlyAgentedFolder(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	// Pre-create a sibling skill that must not be touched.
+	siblingDir := filepath.Join(home, ".claude", "skills", "other-skill")
+	if err := os.MkdirAll(siblingDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(siblingDir, "SKILL.md"), []byte("sibling"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := skill.Install(skill.InstallOptions{Selected: "claude", Scope: skill.ScopeGlobal}); err != nil {
+		t.Fatal(err)
+	}
+	results, err := skill.Uninstall(skill.UninstallOptions{Selected: "claude", Scope: skill.ScopeGlobal})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if results[0].Status != skill.StatusRemoved {
+		t.Errorf("status: got %q want %q", results[0].Status, skill.StatusRemoved)
+	}
+	if _, err := os.Stat(filepath.Join(home, ".claude", "skills", "agented")); !os.IsNotExist(err) {
+		t.Errorf("agented dir should be gone")
+	}
+	if _, err := os.Stat(siblingDir); err != nil {
+		t.Errorf("sibling skill should be intact: %v", err)
+	}
+}
+
+func TestList(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	if _, err := skill.Install(skill.InstallOptions{Selected: "claude", Scope: skill.ScopeGlobal}); err != nil {
+		t.Fatal(err)
+	}
+	entries, err := skill.List(skill.ListOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]skill.ListEntry{}
+	for _, e := range entries {
+		got[e.Target] = e
+	}
+	c, ok := got["claude"]
+	if !ok || !c.Installed {
+		t.Errorf("claude should report installed: %+v", c)
+	}
+	if c.Version != skill.Version {
+		t.Errorf("claude version: got %q want %q", c.Version, skill.Version)
+	}
+	a, ok := got["agents"]
+	if !ok || a.Detected != "-" {
+		t.Errorf("agents Detected should be '-', got %q", a.Detected)
+	}
+}
+
+func TestUpgradeOnlyTouchesInstalled(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	if _, err := skill.Install(skill.InstallOptions{Selected: "claude", Scope: skill.ScopeGlobal}); err != nil {
+		t.Fatal(err)
+	}
+	results, err := skill.Upgrade(skill.InstallOptions{Selected: "all", Scope: skill.ScopeGlobal})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]skill.Status{}
+	for _, r := range results {
+		got[r.Target] = r.Status
+	}
+	if got["claude"] != skill.StatusUnchanged && got["claude"] != skill.StatusUpdated {
+		t.Errorf("claude upgrade status: %q", got["claude"])
+	}
+	// agents was never installed in this test → skipped.
+	if got["agents"] != skill.StatusSkipped {
+		t.Errorf("agents upgrade status (no prior install): %q", got["agents"])
 	}
 }
 
