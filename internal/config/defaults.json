@@ -2,7 +2,8 @@
   "actor": "",
   "concurrency": {
     "require_expect": "warn",
-    "auto_save": "clean"
+    "auto_save": "clean",
+    "auto_load_on_drift": true
   },
   "transactions": {
     "auto_rollback_idle_for": "10m"

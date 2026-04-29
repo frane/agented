@@ -28,7 +28,7 @@ func TestConcurrentEdits(t *testing.T) {
 			cmd := exec.Command(aeBin, "replace", "a.txt", "--range", "1:1",
 				"--with", strings.Repeat("X", i+1)+"\n", "--expect", tok)
 			cmd.Dir = s.dir
-			cmd.Env = append(cmd.Env, "AE_ACTOR=p"+itoa(i))
+			cmd.Env = append(cmd.Env, "AE_ACTOR=p"+itoa(i), "AE_AUTO_LOAD_ON_DRIFT=false")
 			err := cmd.Run()
 			if ee, ok := err.(*exec.ExitError); ok {
 				results[i] = ee.ExitCode()

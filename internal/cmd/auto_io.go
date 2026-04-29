@@ -1,21 +1,43 @@
 package cmd
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 
 	"github.com/frane/agented/internal/atomicfile"
 	"github.com/frane/agented/internal/store"
 )
 
+// stamp records (mtime-nanos, size) for the disk file at the moment we last
+// wrote it through autoSaveAfterEdit. Lets autoLoadIfDrifted skip the
+// expensive read+hash when the stat hasn't changed since.
+type stamp struct {
+	mtimeNanos int64
+	size       int64
+}
+
+// driftCache is a per-Engine, per-process map of file_id -> stamp. Cross-
+// process races just fall through to the full read+hash, which is correct.
+var driftCache sync.Map // map[int64]stamp
+
+func diskStamp(path string) (stamp, bool) {
+	st, err := os.Stat(path)
+	if err != nil {
+		return stamp{}, false
+	}
+	return stamp{mtimeNanos: st.ModTime().UnixNano(), size: st.Size()}, true
+}
+
 // autoLoadIfDrifted detects whether the on-disk content has diverged from
-// the workspace head and, if so, loads disk into a new edit so the
-// upcoming write applies on top of disk reality. Returns (driftLoaded,
-// reason, err).
+// the workspace head. Fast path: if the disk file's (mtime, size) match
+// what we recorded after our last save, no drift; return immediately.
+// Slow path: full read + hash. On detected drift, load the disk content as
+// a new edit so the upcoming write applies on top of disk reality.
 //
 // "drift" here means: someone wrote to the file outside ae (another
-// editor, another process, a non-ae agent). Without auto-load the next
-// edit would silently overwrite their work. With auto-load we capture
+// editor, another process, a non-ae agent). With auto-load we capture
 // it as an edit on the tree first, so it's recoverable via undo / head.
 func (e *Engine) autoLoadIfDrifted(fi *store.FileInfo) (loaded bool, reason string, err error) {
 	if !e.Config.Concurrency.AutoLoadOnDrift {
@@ -25,21 +47,35 @@ func (e *Engine) autoLoadIfDrifted(fi *store.FileInfo) (loaded bool, reason stri
 	if err != nil {
 		return false, "", err
 	}
-	data, rerr := os.ReadFile(abs)
-	if rerr != nil {
-		if os.IsNotExist(rerr) {
+	cur, ok := diskStamp(abs)
+	if !ok {
+	}
+	if cached, hit := driftCache.Load(fi.ID); hit {
+		if c := cached.(stamp); c == cur {
+			// Fast path: disk has not been touched since our last save.
 			return false, "", nil
 		}
+	}
+	// Slow path: read and hash.
+	data, rerr := os.ReadFile(abs)
+	if rerr != nil {
 		return false, "", rerr
 	}
 	hash := store.HashContent(string(data))
 	if hash == fi.ContentHash {
+		// Content matches workspace head; refresh stamp so future calls hit
+		// the fast path until something changes again.
+		driftCache.Store(fi.ID, cur)
 		return false, "", nil
 	}
 	if _, lerr := e.Store.LoadFromDisk(e.Actor, fi.ID, data); lerr != nil {
 		return false, "", lerr
 	}
-	return true, "disk content diverged from workspace head; auto-loaded into a new edit", nil
+	// Refresh stamp after the load so subsequent calls fast-path.
+	if s, ok := diskStamp(abs); ok {
+		driftCache.Store(fi.ID, s)
+	}
+	return true, fmt.Sprintf("disk diverged from workspace head; loaded as new edit (mtime/size changed since last save)"), nil
 }
 
 // autoSaveAfterEdit writes the current workspace head to disk. Honors
@@ -67,6 +103,11 @@ func (e *Engine) autoSaveAfterEdit(fi *store.FileInfo, head string) (saved bool,
 	}
 	if _, err := atomicfile.New(abs).Write([]byte(head)); err != nil {
 		return false, err
+	}
+	// Record the post-save stamp so the next autoLoadIfDrifted call can
+	// skip the read+hash when (mtime, size) is unchanged.
+	if s, ok := diskStamp(abs); ok {
+		driftCache.Store(fi.ID, s)
 	}
 	return true, nil
 }
