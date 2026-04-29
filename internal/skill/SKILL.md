@@ -73,6 +73,7 @@ These are the operations that motivate reaching for `ae` over the built-ins.
 | `status` | `st`  | `[<path>]`                    | workspace or file summary | Get state_token for next write        |
 | `mark get` | -    | `<path> <name>`             | `name\tline\tsnapped\t...`| Jump back to a known anchor           |
 | `annotate list` | -| `<path>`                       | `id\tts\tactor\tcontent`  | Recall notes from prior sessions      |
+| `show`   | -     | `<path> [--edit <id>] [--no-color]` | colored, syntax-highlighted unified diff | Display a change to the user. NOT for tool result chains; lean tab format is the default everywhere else |
 
 ## Writing verbs (use `--expect <state_token>`)
 
@@ -87,9 +88,11 @@ These are the operations that motivate reaching for `ae` over the built-ins.
 | `extract`  | -     | `<path> --range S:E --to <new-or-existing> [--save]` | -            | Refactor a range into a sibling file (atomic) |
 
 Every successful write prints `edit_id=<n>\thead_edit_id=<n>\tline_delta=<d>\tline_count=<n>\tstate_token=<hex>`. Use the new token for the next write.
+**Auto-save and auto-load are on by default.** Every write verb (replace/insert/delete/move/extract) and history verb (undo/redo/head) flushes the resulting head to disk in the same call. The result includes `saved: true` to confirm. Before the write, ae stat-s the file: if `(mtime, size)` match the stamp from our last save, the call proceeds; if disk was touched externally, ae loads the disk content as a new edit on the tree (so external changes are recoverable via `ae undo`/`ae head`) and applies your edit on top. The result includes `loaded_from_disk: true` and `drift_reason` when this happens.
 
-**Auto-save is on by default.** `ae replace` / `insert` / `delete` / `move` / `extract` write the new head to disk atomically as part of the same call, so a separate `ae save` is rarely needed. The result struct includes `saved: true` to confirm. Set `concurrency.auto_save: off` in config if you want manual control.
+Config knobs: `concurrency.auto_save = clean | off | force` (default `clean`), `concurrency.auto_load_on_drift` (default `true`). Env override: `AE_AUTO_SAVE=off`, `AE_AUTO_LOAD_ON_DRIFT=false`.
 
+`ae save <path>` and `ae load <path>` still exist for granular control. They are not part of the normal write flow.
 `ae save <path>` and `ae load <path>` still exist for granular control: `save` flushes head when auto-save was off, `load` pulls disk content into the workspace as a new edit (useful when an external editor diverged the file). Neither belongs in the normal write flow.
 
 ## History verbs
