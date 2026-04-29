@@ -75,7 +75,6 @@ type AuditCfg struct {
 type OutputCfg struct {
 	DefaultFormat     string `json:"default_format"`     // tab | json
 	IncludeStateToken bool   `json:"include_state_token"`
-	RichDiff          string `json:"rich_diff"`          // auto | always | never (default auto)
 	SyntaxHighlight   bool   `json:"syntax_highlight"`   // when true, color tokens by language (chroma)
 }
 

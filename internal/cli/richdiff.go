@@ -1,17 +1,14 @@
 package cli
 
 import (
-	"errors"
 	"fmt"
 	"io"
-	"os"
 	"strings"
 
 	"github.com/alecthomas/chroma/v2/formatters"
 	"github.com/alecthomas/chroma/v2/lexers"
 	"github.com/alecthomas/chroma/v2/styles"
 
-	"github.com/frane/agented/internal/cmd"
 	"github.com/frane/agented/internal/diff"
 )
 
@@ -280,66 +277,4 @@ func highlightLine(line, path string, color bool) string {
 	}
 	// chroma may include trailing whitespace/newlines; trim end-of-line.
 	return strings.TrimRight(buf.String(), "\n")
-}
-
-// shouldRichDiff returns true when this invocation should emit colored,
-// summary-style diff output for write verbs. Honors --no-rich-diff,
-// --no-color, NO_COLOR, the TTY check, and the output.rich_diff config
-// (auto|always|never).
-func (a *App) shouldRichDiff() bool {
-	if a.NoRichDiff {
-		return false
-	}
-	mode := a.cfg.Output.RichDiff
-	if mode == "" {
-		mode = "auto"
-	}
-	switch mode {
-	case "never":
-		return false
-	case "always":
-		return true
-	}
-	// auto: TTY + color allowed.
-	return colorEnabled(a.Stdout, a.NoColor)
-}
-
-// renderEditRichDiff fetches before/after content for the edit result and
-// writes a Claude Code-style colored unified diff to stdout. Returns an
-// error if the content cannot be reconstructed (caller falls back to tab).
-func (a *App) renderEditRichDiff(r *cmd.Result) error {
-	if r.Edit == nil {
-		return errors.New("not an edit result")
-	}
-	editID := r.Edit.NewEditID
-	ed, err := a.engine.Store.EditByID(editID, false)
-	if err != nil {
-		return err
-	}
-	var oldContent string
-	if ed.ParentEditID != nil {
-		oldContent, err = a.engine.Store.EditContentAt(*ed.ParentEditID)
-		if err != nil {
-			return err
-		}
-	}
-	newContent, err := a.engine.Store.EditContentAt(editID)
-	if err != nil {
-		return err
-	}
-	// Color is enabled when stdout is a TTY (default), or when the user
-	// explicitly pinned rich_diff="always" or set FORCE_COLOR. Honors --no-color
-	// and NO_COLOR. Width detection happens via $COLUMNS regardless of TTY.
-	force := a.cfg.Output.RichDiff == "always" || os.Getenv("FORCE_COLOR") != ""
-	color := !a.NoColor && os.Getenv("NO_COLOR") == "" && (force || isTTY(a.Stdout))
-	width := terminalWidth()
-	renderRichDiff(a.Stdout, RichDiffOptions{
-		Path:       r.Edit.Path,
-		OldContent: oldContent,
-		NewContent: newContent,
-		Color:      color,
-		Highlight:  color && a.cfg.Output.SyntaxHighlight,
-		Width:      width,
-	})
-	return nil
 }

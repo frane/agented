@@ -58,6 +58,7 @@ func registerVerbs(a *App, root *cobra.Command) {
 		newFindCmd(a),
 		newMCPCmd(a),
 		newExtractCmd(a),
+		newShowCmd(a),
 	)
 }
 

@@ -19,11 +19,6 @@ func Validate(c *Config) error {
 	default:
 		return fmt.Errorf("output.default_format: invalid %q", c.Output.DefaultFormat)
 	}
-	switch c.Output.RichDiff {
-	case "", "auto", "always", "never":
-	default:
-		return fmt.Errorf("output.rich_diff: invalid %q (want auto|always|never)", c.Output.RichDiff)
-	}
 	switch c.Skill.EnforceVersion {
 	case "major", "any", "off":
 	default:

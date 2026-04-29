@@ -23,7 +23,6 @@ func envApply(merged map[string]any, sources Sources) {
 		"AE_AUDIT_AUTO_PRUNE":           "audit.auto_prune",
 		"AE_OUTPUT_DEFAULT_FORMAT":      "output.default_format",
 		"AE_OUTPUT_INCLUDE_STATE_TOKEN": "output.include_state_token",
-		"AE_OUTPUT_RICH_DIFF":           "output.rich_diff",
 		"AE_OUTPUT_SYNTAX_HIGHLIGHT":    "output.syntax_highlight",
 		"AE_SKILL_ENFORCE_VERSION":      "skill.enforce_version",
 		"AE_MCP_DEFAULT_TRANSPORT":      "mcp.default_transport",

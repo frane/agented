@@ -28,7 +28,6 @@
   "output": {
     "default_format": "tab",
     "include_state_token": true,
-    "rich_diff": "auto",
     "syntax_highlight": true
   },
   "skill": {
