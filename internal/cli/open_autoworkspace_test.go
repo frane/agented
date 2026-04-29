@@ -17,6 +17,7 @@ import (
 // register the file.
 func TestOpenAutoCreatesWorkspaceAtGitRoot(t *testing.T) {
 	root := t.TempDir()
+	home := t.TempDir() // separate from root so HOME != project root
 	if err := os.MkdirAll(filepath.Join(root, ".git"), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -28,15 +29,26 @@ func TestOpenAutoCreatesWorkspaceAtGitRoot(t *testing.T) {
 	if err := os.WriteFile(p, []byte("package main\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	code, out, errOut := runAE(t, deep, "open", "main.go")
+	t.Setenv("HOME", home)
+	t.Setenv("AE_ACTOR", "tester")
+	cwd, _ := os.Getwd()
+	if err := os.Chdir(deep); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chdir(cwd)
+	var stdout, stderr bytes.Buffer
+	code := cli.Execute(context.Background(),
+		[]string{"open", "main.go"},
+		cmd.VersionInput{Version: "test", Commit: "abc", Date: "2026"},
+		strings.NewReader(""), &stdout, &stderr)
 	if code != 0 {
-		t.Fatalf("open: %d\nstdout=%s\nstderr=%s", code, out, errOut)
+		t.Fatalf("open: %d\nstdout=%s\nstderr=%s", code, stdout.String(), stderr.String())
 	}
-	if !strings.Contains(errOut, "auto-created workspace") {
-		t.Errorf("expected auto-create stderr line, got: %s", errOut)
+	if !strings.Contains(stderr.String(), "auto-created workspace") {
+		t.Errorf("expected auto-create stderr line, got: %s", stderr.String())
 	}
-	if !strings.Contains(errOut, ".git") {
-		t.Errorf("expected detected-via-.git in stderr: %s", errOut)
+	if !strings.Contains(stderr.String(), ".git") {
+		t.Errorf("expected detected-via-.git in stderr: %s", stderr.String())
 	}
 	wsDir := filepath.Join(root, ".agented")
 	if fi, err := os.Stat(wsDir); err != nil || !fi.IsDir() {
@@ -48,26 +60,42 @@ func TestOpenAutoCreatesWorkspaceAtGitRoot(t *testing.T) {
 // via the existing tier-1 walk-up; no second log line, no double-create.
 func TestSecondInvocationFindsExistingWorkspace(t *testing.T) {
 	root := t.TempDir()
+	home := t.TempDir() // separate from root so HOME != project root
 	os.MkdirAll(filepath.Join(root, ".git"), 0o755)
 	deep := filepath.Join(root, "sub")
 	os.MkdirAll(deep, 0o755)
 	p := filepath.Join(deep, "a.txt")
 	os.WriteFile(p, []byte("x\n"), 0o644)
-	// First invocation auto-creates.
-	code, _, errOut1 := runAE(t, deep, "open", "a.txt")
-	if code != 0 {
-		t.Fatalf("first open exit %d: %s", code, errOut1)
+	t.Setenv("HOME", home)
+	t.Setenv("AE_ACTOR", "tester")
+	cwd, _ := os.Getwd()
+	if err := os.Chdir(deep); err != nil {
+		t.Fatal(err)
 	}
-	if !strings.Contains(errOut1, "auto-created") {
-		t.Errorf("first invocation should log auto-create: %s", errOut1)
+	defer os.Chdir(cwd)
+	// First invocation auto-creates.
+	var stdout1, stderr1 bytes.Buffer
+	code := cli.Execute(context.Background(),
+		[]string{"open", "a.txt"},
+		cmd.VersionInput{Version: "test", Commit: "abc", Date: "2026"},
+		strings.NewReader(""), &stdout1, &stderr1)
+	if code != 0 {
+		t.Fatalf("first open exit %d: %s", code, stderr1.String())
+	}
+	if !strings.Contains(stderr1.String(), "auto-created") {
+		t.Errorf("first invocation should log auto-create: %s", stderr1.String())
 	}
 	// Second invocation must NOT log another auto-create.
-	code, _, errOut2 := runAE(t, deep, "status")
+	var stdout2, stderr2 bytes.Buffer
+	code = cli.Execute(context.Background(),
+		[]string{"status"},
+		cmd.VersionInput{Version: "test", Commit: "abc", Date: "2026"},
+		strings.NewReader(""), &stdout2, &stderr2)
 	if code != 0 {
-		t.Fatalf("second status exit %d: %s", code, errOut2)
+		t.Fatalf("second status exit %d: %s", code, stderr2.String())
 	}
-	if strings.Contains(errOut2, "auto-created") {
-		t.Errorf("second invocation should not log auto-create: %s", errOut2)
+	if strings.Contains(stderr2.String(), "auto-created") {
+		t.Errorf("second invocation should not log auto-create: %s", stderr2.String())
 	}
 }
 
