@@ -6,6 +6,7 @@ require (
 	github.com/mark3labs/mcp-go v0.49.0
 	github.com/spf13/cobra v1.10.2
 	modernc.org/sqlite v1.50.0
+	pgregory.net/rapid v1.2.0
 )
 
 require (
@@ -23,5 +24,4 @@ require (
 	modernc.org/libc v1.72.0 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.11.0 // indirect
-	pgregory.net/rapid v1.2.0 // indirect
 )
