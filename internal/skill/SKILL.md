@@ -54,7 +54,7 @@ Most LLMs were trained on `Read → Edit → Read → Edit` and reach for the sa
 - **Don't `ae status` just to refetch a state_token.** Every write returns the new token in the result. Thread it forward. The only reason to call `ae status` is when you explicitly need workspace-level info (open files, dirty flags, current actor).
 - **Don't `ae open` more than once per file per session.** The first-touch rule covers the registration. Subsequent reads/writes auto-resolve the same FileInfo. Auto-open also kicks in transparently if you forget — `ae search foo.go` registers the file silently when needed.
 
-- **Don't pipe ae output through `| head`/`| tail`/`| grep`.** Every read verb has `--range`, `--limit`, or `--pattern` to bound output server-side. `ae view foo.go -r 42:50` already returns 9 lines; the `| head -10` is dead weight. `ae find x --limit 20` already caps. Pipe-trimming after the fact wastes the round trip's setup cost.
+- **Don't pipe ae output through `| head`/`| tail`/`| grep`.** Every read verb has `--range`, `--limit`, or `--pattern` to bound output server-side, and `--range` accepts Python-slice syntax: `1:10` for first 10, `-10:` for last 10, `5:-5` for middle slice (skip first 5 and last 5), `:20` for first 20, `-50:-20` for the lines 50-from-end through 20-from-end. Pipe-trimming after the fact wastes the round trip's setup cost.
 - **Don't append `2>&1`.** ae uses exit codes — 0 success, 3 conflict (with full content payload on stdout), 1/2 for errors. Stderr is ae's own diagnostic noise; merging it into stdout means you parse around it. Just read stdout.
 
 Translation: the canonical loop is `open → search/find → replace/insert/delete → repeat`. Three calls per logical edit, sometimes two. Not five.
@@ -78,7 +78,7 @@ These are the operations that motivate reaching for `ae` over the built-ins.
 
 | Verb     | Short | Args                          | Output (tab) suffix       | Use when                              |
 |----------|-------|-------------------------------|---------------------------|---------------------------------------|
-| `view`   | `v`   | `<path> [--range S:E] [--raw]` | `state_token\t<hex>`      | Inspect a file or range; `--raw` emits verbatim bytes (no line-num prefix, no token), useful when piping to another tool |
+| `view`   | `v`   | `<path> [--range S:E] [--raw]` | `state_token\t<hex>`      | Inspect a file or range. `--range` is Python-slice: `1:10` first 10, `-10:` last 10, `5:-5` middle slice, `:20` first 20, `42:50` window. `--raw` emits verbatim bytes (no line-num prefix, no token) for piping to another tool |
 | `search` | `/`   | `<path> --pattern <re>`       | `state_token\t<hex>`      | Find matches; output `line\tcol\ttext`|
 | `diff`   | `df`  | `<path> [--from N --to M]`    | unified diff + token      | Inspect what an edit changed          |
 | `log`    | -     | `<path> [--limit N]`          | tab-delimited audit rows  | See history of operations             |

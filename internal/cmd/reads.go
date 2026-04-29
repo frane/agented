@@ -27,16 +27,38 @@ func (e *Engine) View(in ViewInput) (*Result, error) {
 		return nil, err
 	}
 	parts := splitLinesPreserve(content)
-	start := in.Start
-	end := in.End
-	if start <= 0 {
+	n := len(parts)
+	// Resolve slice-style range. start/end semantics:
+	//   0           = unspecified (start of file or end of file respectively)
+	//   positive K  = absolute line K (1-based)
+	//   negative -K = K from end (so -1 is the last line, -10 is 10 from end)
+	resolve := func(v, dflt int) int {
+		if v == 0 {
+			return dflt
+		}
+		if v < 0 {
+			return n + 1 + v // -1 → n, -2 → n-1, etc.
+		}
+		return v
+	}
+	start := resolve(in.Start, 1)
+	end := resolve(in.End, n)
+	if start < 1 {
 		start = 1
 	}
-	if end <= 0 || end > len(parts) {
-		end = len(parts)
+	if end > n {
+		end = n
 	}
-	if start > len(parts) {
-		return nil, fmt.Errorf("%w: file has %d lines", store.ErrRangeOutOfBounds, len(parts))
+	if n == 0 {
+		// empty file is fine for view; return empty result
+		return &Result{
+			FileID:     &fi.ID,
+			StateToken: store.ComputeStateToken(fi.ID, fi.HeadEditID, fi.ContentHash),
+			View:       &ViewResult{Lines: nil, Start: 0, End: 0, Raw: in.Raw},
+		}, nil
+	}
+	if start > n {
+		return nil, fmt.Errorf("%w: file has %d lines", store.ErrRangeOutOfBounds, n)
 	}
 	if end < start {
 		return nil, store.ErrRangeOutOfBounds

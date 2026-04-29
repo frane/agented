@@ -133,13 +133,24 @@ func (a *App) auditErr(verb string, args any, errMsg string, fileID, editID *int
 func parseRange(s string) (int, int, error) {
 	parts := strings.SplitN(s, ":", 2)
 	if len(parts) != 2 {
-		return 0, 0, fmt.Errorf("invalid range %q (expected start:end)", s)
+		return 0, 0, fmt.Errorf("invalid range %q (expected start:end, slice-style: 1:10, -10:, :20, 5:-5)", s)
 	}
-	a, err := strconv.Atoi(parts[0])
+	parseEdge := func(raw string, defaultVal int) (int, error) {
+		raw = strings.TrimSpace(raw)
+		if raw == "" {
+			return defaultVal, nil
+		}
+		n, err := strconv.Atoi(raw)
+		if err != nil {
+			return 0, err
+		}
+		return n, nil
+	}
+	a, err := parseEdge(parts[0], 0)
 	if err != nil {
 		return 0, 0, fmt.Errorf("invalid start in range %q: %w", s, err)
 	}
-	b, err := strconv.Atoi(parts[1])
+	b, err := parseEdge(parts[1], 0)
 	if err != nil {
 		return 0, 0, fmt.Errorf("invalid end in range %q: %w", s, err)
 	}
