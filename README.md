@@ -57,7 +57,7 @@ The other axis is round-trip economy. One read per session-start, one rejection-
 go install github.com/frane/agented/cmd/ae@latest
 ```
 
-Or clone the repo and `make install`. Pure Go, no cgo, statically linked single binary. Three external runtime dependencies (`modernc.org/sqlite`, Cobra, mark3labs/mcp-go) on top of the standard library. Apache 2.0.
+Or clone the repo and `make install`. Pure Go, no cgo, statically linked single binary. Three external runtime dependencies (`modernc.org/sqlite`, `spf13/cobra`, `mark3labs/mcp-go`) on top of the standard library. Apache 2.0.
 
 ## What a session looks like
 
