@@ -79,6 +79,7 @@ type StatusResult struct {
 
 	File          *store.FileInfo
 	Dirty         bool
+	DiskDiff      string
 	BranchCount   int
 	MarkCount     int
 	AnnotationCount int

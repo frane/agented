@@ -230,6 +230,11 @@ func emitTab(w io.Writer, r *cmd.Result, header, includeToken bool) error {
 		if s.OpenTx != nil {
 			fmt.Fprintf(w, "transaction\tid=%d\towner=%s\n", s.OpenTx.ID, s.OpenTx.Actor)
 		}
+		if s.DiskDiff != "" {
+			fmt.Fprintln(w, "---disk-diff---")
+			fmt.Fprint(w, s.DiskDiff)
+			fmt.Fprintln(w, "---end-disk-diff---")
+		}
 		return nil
 	case r.View != nil:
 		for _, ln := range r.View.Lines {

@@ -91,13 +91,35 @@ ae replace auth.go --range 100:140 --with "..." --expect T1   # state_token=T2
 ae mark auth.go get return_point             # line is now 100+(new lines)-(40 deleted)
 ```
 
-## Annotations
+## Annotations — durable cross-session memory
 
-Annotations are how you talk to your future self and to other agents. `ae open` returns active annotations inline (full content), so reading them is free — you don't have to make a separate `annotate list` call.
+Annotations are how a session leaves context for the next one. They live in the workspace, not in your context window. `ae open` returns active annotations inline so reading them is free — there is no separate "load memory" step.
 
-Useful annotations: "this function is called from concurrent paths; needs lock", "leaving this half-done, todo: handle err on line 84", "tested manually 2026-04-28".
+These four behaviors are mandatory, not optional:
 
-Useless annotations: "this is a Python file", "function definition", "imports". The skill enforces no rule but you waste your future self's time.
+**1. On opening any file with annotations, read them before doing anything else.** They are the prior session's input to the upcoming task. Parse them, factor them into your plan, reference them when making decisions. Do not skip. Do not skim. They were left specifically because the prior session thought the next session needed them.
+
+```sh
+ae open auth.go
+# response: annotation\t14\t...\tprev-actor\tauth path uses signed cookies; do not weaken
+# response: annotation\t15\t...\tprev-actor\trefactor in progress, lines 80-130 half-done
+# read both before issuing any edit
+```
+
+**2. On finishing substantive work on a file, leave an annotation.** "Substantive" means more than three or four edits, or any logical unit of work — "implemented X", "refactored Y", "fixed bug Z". Summarize what was done, what remains open, and any decisions that aren't visible in the code. Skip annotations only for truly trivial fixes (single-line typo, config tweak with no broader implication).
+
+```sh
+ae an auth.go a -t "implemented refresh-token rotation; remaining: revoke endpoint and key-rotation cron. token storage is at line 47 — do not move without auditing the audit log."
+```
+
+**3. On encountering a non-obvious invariant or constraint while reading code, annotate it before moving on.** If the next session would benefit from knowing it without re-deriving it, capture it now.
+
+```sh
+ae an scheduler.go a -t "the dispatcher in run() must remain pure — it's called during init() before the metrics package is loaded"
+ae an fixtures_test.go a -t "tests depend on the exact ordering of map iteration in this fixture; do not switch to map-iteration-order-independent assertions"
+```
+
+**4. Do not annotate trivia.** Don't write "this is a Python file", "this function returns a string", "imports". Don't repeat what a docstring already says. Don't annotate something obvious from three lines of the function. Useless annotations train the next session to skim them — that's how you lose the high-signal ones.
 
 ## Transactions
 
@@ -175,6 +197,7 @@ ae replace foo.go --range 47:47 --with "..." --expect T2   # state_token=T3
 - Calling `redo` after intentionally creating a new branch — `redo` will fail with branch ambiguity. Use `head --edit <id>` instead.
 - Useless annotations ("this is a function").
 - Unescaped regex special characters in `search` patterns.
+- Skipping the annotations on `ae open`. They were left for you on purpose; reading them is free.
 
 ## Output format reference
 

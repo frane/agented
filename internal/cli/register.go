@@ -211,7 +211,10 @@ func newListCmd(a *App) *cobra.Command {
 }
 
 func newStatusCmd(a *App) *cobra.Command {
-	var storage bool
+	var (
+		storage  bool
+		diffDisk bool
+	)
 	c := &cobra.Command{
 		Use:     "status [path]",
 		Aliases: []string{"st"},
@@ -222,7 +225,7 @@ func newStatusCmd(a *App) *cobra.Command {
 			if len(args) == 1 {
 				path = args[0]
 			}
-			res, err := a.engine.Status(cmd.StatusInput{Path: path, Storage: storage})
+			res, err := a.engine.Status(cmd.StatusInput{Path: path, Storage: storage, DiffDisk: diffDisk})
 			if err != nil {
 				a.auditErr("status", map[string]any{"path": path}, err.Error(), nil, nil)
 				return wrapErr(err)
@@ -232,6 +235,7 @@ func newStatusCmd(a *App) *cobra.Command {
 		},
 	}
 	c.Flags().BoolVar(&storage, "storage", false, "Include storage report")
+	c.Flags().BoolVarP(&diffDisk, "diff-disk", "D", false, "Include unified diff between head and on-disk content when dirty")
 	return c
 }
 
@@ -351,7 +355,7 @@ func attachEditFlags(c *cobra.Command, ef *editFlags) {
 	c.Flags().StringVarP(&ef.textFile, "text-file", "f", "", "Read text from this path")
 	c.Flags().BoolVarP(&ef.fromStdin, "from-stdin", "i", false, "Read text from stdin")
 	c.Flags().BoolVarP(&ef.noTx, "no-transaction", "T", false, "Bypass current transaction owner enforcement")
-	c.Flags().BoolVar(&ef.autoOpen, "auto-open", false, "Auto-open the file if not registered")
+	c.Flags().BoolVar(&ef.autoOpen, "auto-open", true, "Auto-open the file if not registered (default true)")
 }
 
 // for replace, --with is the inline text; we still allow --text-file/--from-stdin.
@@ -361,32 +365,52 @@ func attachReplaceFlags(c *cobra.Command, ef *editFlags) {
 	c.Flags().StringVarP(&ef.textFile, "text-file", "f", "", "Read replacement from this path")
 	c.Flags().BoolVarP(&ef.fromStdin, "from-stdin", "i", false, "Read replacement from stdin")
 	c.Flags().BoolVarP(&ef.noTx, "no-transaction", "T", false, "Bypass current transaction owner enforcement")
-	c.Flags().BoolVar(&ef.autoOpen, "auto-open", false, "Auto-open the file if not registered")
+	c.Flags().BoolVar(&ef.autoOpen, "auto-open", true, "Auto-open the file if not registered (default true)")
 }
 
 func newReplaceCmd(a *App) *cobra.Command {
-	var rangeStr string
+	var (
+		rangeStr string
+		pattern  string
+		limit    int
+		dryRun   bool
+	)
 	ef := &editFlags{}
 	c := &cobra.Command{
 		Use:     "replace <path>",
 		Aliases: []string{"s"},
-		Short:   "Replace a line range",
+		Short:   "Replace a line range, or with --pattern, every regex match",
 		Args:    cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
-			s, e, err := parseRange(rangeStr)
-			if err != nil {
-				return wrapErrCode(1, err)
-			}
 			text, err := readTextInput(a.Stdin, ef.text, ef.textFile, ef.fromStdin)
 			if err != nil {
 				return wrapErrCode(1, err)
 			}
 			in := cmd.ReplaceInput{
-				Path: args[0], Start: s, End: e, With: text,
-				Expect: ef.expect, NoTransaction: ef.noTx, AutoOpen: ef.autoOpen,
+				Path:          args[0],
+				With:          text,
+				Expect:        ef.expect,
+				NoTransaction: ef.noTx,
+				AutoOpen:      ef.autoOpen,
+				Pattern:       pattern,
+				Limit:         limit,
+				DryRun:        dryRun,
+			}
+			argsLog := map[string]any{"path": args[0]}
+			if pattern == "" {
+				if rangeStr == "" {
+					return wrapErrCode(1, errors.New("either --range or --pattern is required"))
+				}
+				s, e, err := parseRange(rangeStr)
+				if err != nil {
+					return wrapErrCode(1, err)
+				}
+				in.Start, in.End = s, e
+				argsLog["range"] = rangeStr
+			} else {
+				argsLog["pattern"] = pattern
 			}
 			res, err := a.engine.Replace(in)
-			argsLog := map[string]any{"path": args[0], "range": rangeStr}
 			if err != nil && !errors.Is(err, store.ErrStateTokenMismatch) {
 				a.auditErr("replace", argsLog, err.Error(), fileIDOrNil(res), nil)
 				return wrapErr(err)
@@ -400,9 +424,11 @@ func newReplaceCmd(a *App) *cobra.Command {
 			return a.emit(res)
 		},
 	}
-	c.Flags().StringVarP(&rangeStr, "range", "r", "", "Line range to replace (e.g. 5:8)")
+	c.Flags().StringVarP(&rangeStr, "range", "r", "", "Line range to replace (e.g. 5:8); ignored when --pattern is set")
+	c.Flags().StringVarP(&pattern, "pattern", "p", "", "RE2 regex; replace every match with --with")
+	c.Flags().IntVarP(&limit, "limit", "L", 0, "Cap on regex replacements (0 = unlimited)")
+	c.Flags().BoolVarP(&dryRun, "dry-run", "n", false, "Count matches without writing")
 	attachReplaceFlags(c, ef)
-	c.MarkFlagRequired("range")
 	return c
 }
 

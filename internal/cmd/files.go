@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"path/filepath"
 
+	"github.com/frane/agented/internal/diff"
 	"github.com/frane/agented/internal/store"
 )
 
@@ -112,8 +113,9 @@ func (e *Engine) List(in ListInput) (*Result, error) {
 
 // StatusInput is the input to status.
 type StatusInput struct {
-	Path    string
-	Storage bool
+	Path     string
+	Storage  bool
+	DiffDisk bool
 }
 
 // Status returns workspace or file status.
@@ -161,10 +163,15 @@ func (e *Engine) Status(in StatusInput) (*Result, error) {
 	// Annotation count.
 	anns, _ := e.Store.AnnotationList(fi.ID, false)
 	res.Status.AnnotationCount = len(anns)
-	// Dirty: head differs from on-disk content?
+	// Dirty: head differs from on-disk content? Optionally include diff.
 	if data, err := readFile(abs); err == nil {
 		hash := store.HashContent(string(data))
 		res.Status.Dirty = hash != fi.ContentHash
+		if in.DiffDisk && res.Status.Dirty {
+			head, _ := e.Store.HeadContent(fi.ID)
+			res.Status.DiskDiff = diff.Unified(head, string(data),
+				fi.Path+"@head", fi.Path+"@disk", 3)
+		}
 	}
 	return res, nil
 }
