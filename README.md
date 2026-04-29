@@ -39,7 +39,6 @@ None of which makes this an editor for humans. There is no TUI, no keybindings, 
 
 
 ```
-The merge command resolved a conflict I'd have spent an hour hand-fixing. Worth setting up.
 • ae feels slower to start than plain file edits, but once a change spans
   multiple steps, the state tokens, history, and undo tree make the work feel
   much less brittle.

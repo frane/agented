@@ -53,6 +53,7 @@ These are the operations that motivate reaching for `ae` over the built-ins.
 - **Three-way merge.** Reconcile two diverged branches with structured conflict responses. Auto-resolve via `--prefer a|b`; resolve specific ranges via `--resolve start:end=a|b|"text"`. Verb: `ae merge <path> -l <leafA> -l <leafB>`.
 - **Atomic batches.** `ae apply` consumes JSON-lines on stdin and applies every operation inside one transaction. Replaces N Edit calls with one. Verb: `cat ops.jsonl | ae apply <path>`.
 - **Atomic move.** `ae move` cuts a range and inserts it elsewhere — same file or cross-file — in one transaction. No partial-success risk. Verb: `ae move <path> --from S:E --to N` (same-file) or `--to-file <other> --to-line N` (cross-file).
+- **Atomic extract.** `ae extract` cuts a range out of one file and writes it to another, creating the destination if absent and optionally saving both files in one call. The canonical refactor primitive. Verb: `ae extract <path> -r S:E --to <new-or-existing> [--to-line N] [--save]`.
 - **Regex replace with capture groups.** `ae replace --pattern` does sed-style replacement in a single tool call. Verb: `ae s <path> -p '<re>' -w '<expansion>' [-L <max>] [-n]`.
 - **Range-based addressing.** Every write targets a line range or insertion point, not a string. Edit's "string appears multiple times" failure mode doesn't exist here. Verb: any of `ae s/i/d` with `-r S:E`.
 - **Annotations as cross-session memory.** Per-file notes that persist across processes and across agents. Verb: `ae an <path> a -t "..."` to write; reading is automatic on `ae open`.
@@ -63,7 +64,7 @@ These are the operations that motivate reaching for `ae` over the built-ins.
 
 | Verb     | Short | Args                          | Output (tab) suffix       | Use when                              |
 |----------|-------|-------------------------------|---------------------------|---------------------------------------|
-| `view`   | `v`   | `<path> [--range S:E]`        | `state_token\t<hex>`      | Inspect a file or range               |
+| `view`   | `v`   | `<path> [--range S:E] [--raw]` | `state_token\t<hex>`      | Inspect a file or range; `--raw` emits verbatim bytes (no line-num prefix, no token), useful when piping to another tool |
 | `search` | `/`   | `<path> --pattern <re>`       | `state_token\t<hex>`      | Find matches; output `line\tcol\ttext`|
 | `diff`   | `df`  | `<path> [--from N --to M]`    | unified diff + token      | Inspect what an edit changed          |
 | `log`    | -     | `<path> [--limit N]`          | tab-delimited audit rows  | See history of operations             |
@@ -82,6 +83,8 @@ These are the operations that motivate reaching for `ae` over the built-ins.
 | `delete`   | `d`   | `<path> --range S:E --expect TOK`             | exit 3 + content  | Remove lines         |
 | `save`     | `w`   | `<path>`                                      | -                 | Write head to disk   |
 | `load`     | `e`   | `<path>`                                      | -                 | Reload from disk     |
+| `move`     | `mv`  | `<path> --from S:E --to N` (or `--to-file P --to-line N`) | exit 3 + content | Move a range; cross-file dst auto-created |
+| `extract`  | -     | `<path> --range S:E --to <new-or-existing> [--save]` | -            | Refactor a range into a sibling file (atomic) |
 
 Every successful write prints `edit_id=<n>\thead_edit_id=<n>\tline_delta=<d>\tline_count=<n>\tstate_token=<hex>`. Use the new token for the next write.
 
@@ -324,5 +327,8 @@ The editor's behavior is influenced by the project's `.agented/config.json`:
 - `transactions.auto_rollback_idle_for`: how long an idle transaction can sit before auto-rollback. Default `10m`.
 - `auto_prune.*`: whether and when the editor prunes stale history. You don't need to think about it.
 - `output.include_state_token`: default `true`. Adds the `state_token\t<hex>` trailer to read verbs' output. Don't turn this off for agent use.
+- `workspace.auto_create`: `root-only` (default) | `true` | `false`. Auto-creates `.agented/` at the project root on first use; you almost never need `ae init` in the normal flow.
+
+When unsure where ae is resolving paths, run `ae status -W`. The first line includes `cwd=<dir>\tworkspace_dir=<dir>` so you can confirm the editor is pointing at the workspace you expect.
 
 `ae config show` prints the resolved configuration if you want to know what's active. The agent does not modify config; the human sets it.

@@ -190,7 +190,6 @@ func newExtractCmd(a *App) *cobra.Command {
 	)
 	c := &cobra.Command{
 		Use:     "extract <path>",
-		Aliases: []string{"e"},
 		Short:   "Cut a line range out of one file and write it to another (auto-creates dst)",
 		Args:    cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
