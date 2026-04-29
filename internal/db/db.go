@@ -15,7 +15,7 @@ import (
 func Open(path string) (*sql.DB, error) {
 	dsn := path
 	if dsn != ":memory:" {
-		dsn = path + "?_pragma=busy_timeout(5000)"
+		dsn = path + "?_pragma=busy_timeout(30000)"
 	}
 	conn, err := sql.Open("sqlite", dsn)
 	if err != nil {
@@ -40,7 +40,7 @@ func applyPragmas(conn *sql.DB) error {
 		"PRAGMA journal_mode = WAL",
 		"PRAGMA synchronous = NORMAL",
 		"PRAGMA foreign_keys = ON",
-		"PRAGMA busy_timeout = 5000",
+		"PRAGMA busy_timeout = 30000",
 		"PRAGMA temp_store = MEMORY",
 	}
 	for _, p := range pragmas {

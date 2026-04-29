@@ -34,6 +34,21 @@ func Locate(start string) (path string, isProject bool, err error) {
 	return LocateWith(start, LocateOptions{AutoCreate: "false"})
 }
 
+// LocateForFile finds the workspace that should own filePath. If filePath is
+// absolute, discovery walks up from filepath.Dir(filePath); otherwise it walks
+// up from cwd. This matches the natural rule: the workspace that owns a file
+// is determined by where the file is, not where the shell happens to be.
+//
+// Calls LocateWith under the hood, so auto-create / NoAutoWorkspace / Stderr
+// options apply. Pass an empty filePath to fall back to cwd-only behavior.
+func LocateForFile(filePath, cwd string, opts LocateOptions) (path string, isProject bool, err error) {
+	start := cwd
+	if filePath != "" && filepath.IsAbs(filePath) {
+		start = filepath.Dir(filePath)
+	}
+	return LocateWith(start, opts)
+}
+
 // LocateWith runs the three-tier discovery:
 //
 //  1. Walk up from start looking for an existing .agented/. If found, use it.

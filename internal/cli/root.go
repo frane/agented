@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 
 	"github.com/spf13/cobra"
 
@@ -83,7 +84,7 @@ type coreDB = struct {
 
 // preRun resolves config/workspace/store/actor before each subcommand. We do
 // this here rather than in main so subcommands can run independently.
-func (a *App) preRun(c *cobra.Command, _ []string) error {
+func (a *App) preRun(c *cobra.Command, args []string) error {
 	// Skip for the `init` and `version` and `who` and `config` subcommands
 	// when there's no workspace.
 	skip := map[string]bool{"init": true, "version": true}
@@ -115,7 +116,12 @@ func (a *App) preRun(c *cobra.Command, _ []string) error {
 			NoAutoWorkspace: a.NoAutoWorkspace || skip[name],
 			Stderr:          a.Stderr,
 		}
-		dir, _, err := workspace.LocateWith(cwd, opts)
+		// If the first positional argument is an absolute file path, use it
+		// to seed discovery so the workspace tracks where the file lives, not
+		// where the shell happens to be. This lets agents avoid passing
+		// --workspace-dir on every call.
+		filePath := firstAbsArg(args)
+		dir, _, err := workspace.LocateForFile(filePath, cwd, opts)
 		if err != nil {
 			if !skip[name] {
 				return err
@@ -228,3 +234,24 @@ func (e *ExitError) Error() string {
 
 // Unwrap supports errors.Is/As.
 func (e *ExitError) Unwrap() error { return e.Err }
+
+// firstAbsArg returns the first positional argument that looks like an
+// absolute file path. Returns "" if no such argument exists. Used by preRun
+// to seed workspace discovery from the file argument when commands are
+// invoked from outside the project directory.
+func firstAbsArg(args []string) string {
+	for _, a := range args {
+		if a == "" {
+			continue
+		}
+		// Skip flag-looking tokens. preRun receives positional args only,
+		// but be defensive.
+		if a[0] == '-' {
+			continue
+		}
+		if filepath.IsAbs(a) {
+			return a
+		}
+	}
+	return ""
+}

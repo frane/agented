@@ -37,10 +37,12 @@ None of which makes this an editor for humans. There is no TUI, no keybindings, 
 
 — Claude Code
 
-<!-- TODO: verify Codex CLI rendering before launch, rendering plain for now -->
 
 ```
 The merge command resolved a conflict I'd have spent an hour hand-fixing. Worth setting up.
+• ae feels slower to start than plain file edits, but once a change spans
+  multiple steps, the state tokens, history, and undo tree make the work feel
+  much less brittle.
 ```
 
 — Codex CLI
@@ -153,6 +155,8 @@ For other MCP clients (Cursor, Zed, Continue, Cline, custom agents using the MCP
 The server exposes one MCP tool per verb, prefixed `ae_`: `ae_open`, `ae_close`, `ae_list`, `ae_status`, `ae_view`, `ae_search`, `ae_find`, `ae_diff`, `ae_log`, `ae_replace`, `ae_insert`, `ae_delete`, `ae_undo`, `ae_redo`, `ae_head`, `ae_branches`, `ae_mark_add`, `ae_mark_list`, `ae_mark_get`, `ae_mark_remove`, `ae_annotate_add`, `ae_annotate_list`, `ae_annotate_remove`, `ae_annotate_search`, `ae_begin`, `ae_commit`, `ae_rollback`, `ae_save`, `ae_load`, `ae_who`. Arguments mirror the CLI flags. The state-token contract is identical, including the conflict response with full file content.
 
 The MCP path uses the same workspace as the CLI. Switching between MCP and CLI mid-session is fine. Both write to the same `.agented/` and see the same head, branches, and annotations.
+
+Workspace discovery happens once when `ae serve` starts, walking up from the subprocess's working directory. Claude Code spawns subprocesses from the project dir, so discovery hits the local `.agented/`. Claude Desktop spawns from `$HOME`, so the global `~/.agented/` becomes the workspace. To pin a specific workspace regardless of cwd, add `"args": ["serve", "--workspace-dir", "/abs/path/.agented"]` to the client config. For absolute file paths in `ae open`, discovery follows the file's directory rather than cwd, so most cases work without the override.
 ## The skill
 
 Run `ae skill install` once and a `SKILL.md` lands in every detected client's skills directory plus the canonical `~/.agents/skills/agented/`. The default does the obvious thing: writes to `~/.agents/`, `~/.claude/skills/`, `~/.codex/skills/`, and `~/.openclaw/workspace/skills/` if those clients are present (detected via home dir or binary on PATH). `ae skill list` shows where it's installed and at what version. `ae skill upgrade` re-installs to the same set after a binary update. `ae skill uninstall` removes only the `agented/` subfolder, never sibling skills. `--target <name>` (`agents`, `claude`, `codex`, `cursor`, `openclaw`) picks one. `--scope project` writes inside the workspace instead. `--dry-run` shows what would happen.

@@ -1,0 +1,139 @@
+package cli
+
+import (
+	"github.com/spf13/cobra"
+
+	"github.com/frane/agented/internal/cmd"
+)
+
+func newFindCmd(a *App) *cobra.Command {
+	var (
+		limit         int
+		includeClosed bool
+	)
+	c := &cobra.Command{
+		Use:     "find <pattern>",
+		Aliases: []string{"f"},
+		Short:   "Cross-file regex search across the workspace",
+		Args:    cobra.ExactArgs(1),
+		RunE: func(_ *cobra.Command, args []string) error {
+			res, err := a.engine.Find(cmd.FindInput{
+				Pattern:       args[0],
+				Limit:         limit,
+				IncludeClosed: includeClosed,
+			})
+			if err != nil {
+				a.auditErr("find", map[string]any{"pattern": args[0]}, err.Error(), nil, nil)
+				return wrapErr(err)
+			}
+			a.auditOK("find", map[string]any{"pattern": args[0]}, nil, nil)
+			return a.emit(res)
+		},
+	}
+	c.Flags().IntVarP(&limit, "limit", "n", 0, "Max total matches across files (default 200)")
+	c.Flags().BoolVarP(&includeClosed, "include-closed", "c", false, "Include closed files in the search")
+	return c
+}
+
+func newViewCmd(a *App) *cobra.Command {
+	var rangeStr string
+	c := &cobra.Command{
+		Use:     "view <path>",
+		Aliases: []string{"v"},
+		Short:   "Print file contents at head",
+		Args:    cobra.ExactArgs(1),
+		RunE: func(_ *cobra.Command, args []string) error {
+			start, end := 0, 0
+			if rangeStr != "" {
+				s, e, err := parseRange(rangeStr)
+				if err != nil {
+					return wrapErrCode(1, err)
+				}
+				start, end = s, e
+			}
+			res, err := a.engine.View(cmd.ViewInput{Path: args[0], Start: start, End: end})
+			if err != nil {
+				a.auditErr("view", map[string]any{"path": args[0], "range": rangeStr}, err.Error(), nil, nil)
+				return wrapErr(err)
+			}
+			a.auditOK("view", map[string]any{"path": args[0], "range": rangeStr}, res.FileID, nil)
+			return a.emit(res)
+		},
+	}
+	c.Flags().StringVarP(&rangeStr, "range", "r", "", "Inclusive line range (e.g. 10:20)")
+	return c
+}
+
+func newSearchCmd(a *App) *cobra.Command {
+	var (
+		pattern string
+		limit   int
+	)
+	c := &cobra.Command{
+		Use:     "search <path>",
+		Aliases: []string{"/"},
+		Short:   "Regex search a file",
+		Args:    cobra.ExactArgs(1),
+		RunE: func(_ *cobra.Command, args []string) error {
+			res, err := a.engine.Search(cmd.SearchInput{Path: args[0], Pattern: pattern, Limit: limit})
+			if err != nil {
+				a.auditErr("search", map[string]any{"path": args[0], "pattern": pattern}, err.Error(), nil, nil)
+				return wrapErr(err)
+			}
+			a.auditOK("search", map[string]any{"path": args[0], "pattern": pattern}, res.FileID, nil)
+			return a.emit(res)
+		},
+	}
+	c.Flags().StringVarP(&pattern, "pattern", "p", "", "Go regexp (RE2) pattern (required)")
+	c.Flags().IntVarP(&limit, "limit", "L", 0, "Max matches (default 100)")
+	return c
+}
+
+func newDiffCmd(a *App) *cobra.Command {
+	var (
+		from int64
+		to   int64
+	)
+	c := &cobra.Command{
+		Use:     "diff <path>",
+		Aliases: []string{"df"},
+		Short:   "Unified diff between two edits",
+		Args:    cobra.ExactArgs(1),
+		RunE: func(_ *cobra.Command, args []string) error {
+			res, err := a.engine.Diff(cmd.DiffInput{Path: args[0], From: from, To: to})
+			if err != nil {
+				a.auditErr("diff", map[string]any{"path": args[0]}, err.Error(), nil, nil)
+				return wrapErr(err)
+			}
+			a.auditOK("diff", map[string]any{"path": args[0]}, res.FileID, nil)
+			return a.emit(res)
+		},
+	}
+	c.Flags().Int64VarP(&from, "from", "F", 0, "Edit ID for the from side (default parent of head)")
+	c.Flags().Int64VarP(&to, "to", "T", 0, "Edit ID for the to side (default head)")
+	return c
+}
+
+func newLogCmd(a *App) *cobra.Command {
+	var (
+		limit int
+		actor string
+	)
+	c := &cobra.Command{
+		Use:   "log <path>",
+		Short: "Show audit log entries for a file",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(_ *cobra.Command, args []string) error {
+			res, err := a.engine.Log(cmd.LogInput{Path: args[0], Limit: limit, Actor: actor})
+			if err != nil {
+				a.auditErr("log", map[string]any{"path": args[0]}, err.Error(), nil, nil)
+				return wrapErr(err)
+			}
+			a.auditOK("log", map[string]any{"path": args[0]}, res.FileID, nil)
+			return a.emit(res)
+		},
+	}
+	c.Flags().IntVarP(&limit, "limit", "L", 0, "Max entries (default 50)")
+	c.Flags().StringVar(&actor, "actor", "", "Filter by actor")
+	return c
+}

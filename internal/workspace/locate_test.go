@@ -217,3 +217,100 @@ func TestLocateWithNoProjectFallsToGlobal(t *testing.T) {
 	}
 }
 
+
+func TestLocateForFileAbsolutePathFollowsFile(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("HOME", filepath.Dir(root))
+	if _, err := workspace.Init(root); err != nil {
+		t.Fatal(err)
+	}
+	deep := filepath.Join(root, "a", "b", "c")
+	if err := os.MkdirAll(deep, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	filePath := filepath.Join(deep, "file.go")
+	if err := os.WriteFile(filePath, []byte("x\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// cwd is some unrelated directory; discovery should still find the
+	// workspace because it walks up from the file path.
+	other := t.TempDir()
+	got, isProj, err := workspace.LocateForFile(filePath, other, workspace.LocateOptions{AutoCreate: "false"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !isProj {
+		t.Error("expected project workspace")
+	}
+	if want := filepath.Join(root, workspace.Dir); got != want {
+		t.Errorf("got %q want %q", got, want)
+	}
+}
+
+func TestLocateForFileRelativeFallsToCwd(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("HOME", filepath.Dir(root))
+	if _, err := workspace.Init(root); err != nil {
+		t.Fatal(err)
+	}
+	deep := filepath.Join(root, "cmd")
+	if err := os.MkdirAll(deep, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	got, isProj, err := workspace.LocateForFile("foo.go", deep, workspace.LocateOptions{AutoCreate: "false"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !isProj {
+		t.Error("expected project workspace via cwd walk-up")
+	}
+	if want := filepath.Join(root, workspace.Dir); got != want {
+		t.Errorf("got %q want %q", got, want)
+	}
+}
+
+func TestLocateForFileEmptyArgUsesCwd(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("HOME", filepath.Dir(root))
+	if _, err := workspace.Init(root); err != nil {
+		t.Fatal(err)
+	}
+	got, _, err := workspace.LocateForFile("", root, workspace.LocateOptions{AutoCreate: "false"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := filepath.Join(root, workspace.Dir); got != want {
+		t.Errorf("got %q want %q", got, want)
+	}
+}
+
+func TestLocateForFileTriggersAutoCreateAtFileRoot(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("HOME", filepath.Dir(root))
+	if err := os.MkdirAll(filepath.Join(root, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	deep := filepath.Join(root, "src")
+	if err := os.MkdirAll(deep, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	filePath := filepath.Join(deep, "file.go")
+	other := t.TempDir() // cwd unrelated
+	var buf strings.Builder
+	got, isProj, err := workspace.LocateForFile(filePath, other, workspace.LocateOptions{
+		AutoCreate: "root-only",
+		Stderr:     &buf,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !isProj {
+		t.Error("expected project workspace via auto-create")
+	}
+	if want := filepath.Join(root, workspace.Dir); got != want {
+		t.Errorf("got %q want %q", got, want)
+	}
+	if !strings.Contains(buf.String(), "auto-created") {
+		t.Errorf("expected auto-create log: %s", buf.String())
+	}
+}
