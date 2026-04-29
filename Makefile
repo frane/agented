@@ -17,7 +17,7 @@ INSTALL_DIR ?= $(HOME)/.local/bin
 
 GO_ENV      := CGO_ENABLED=0
 
-.PHONY: build test test-short test-property lint release install clean fmt staticcheck
+.PHONY: build test test-short test-property bench lint release install clean fmt staticcheck
 
 build:
 	$(GO_ENV) go build -ldflags "$(LDFLAGS)" -o $(BINARY) $(PKG)
@@ -30,6 +30,10 @@ test-short:
 
 test-property:
 	$(GO_ENV) go test ./test/property/... -race
+
+bench:
+	$(GO_ENV) go run ./cmd/ae-bench --output test/benchmark/results.md
+	@echo "wrote test/benchmark/results.md"
 
 lint:
 	go vet ./...
