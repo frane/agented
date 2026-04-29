@@ -10,6 +10,19 @@ import (
 	"testing"
 )
 
+// hasRow returns true when out contains a line whose first column equals
+// target and whose second column equals status. Tolerant to tabwriter output
+// (where columns are space-padded rather than tab-separated).
+func hasRow(out, target, status string) bool {
+	for _, ln := range strings.Split(out, "\n") {
+		f := strings.Fields(ln)
+		if len(f) >= 2 && f[0] == target && f[1] == status {
+			return true
+		}
+	}
+	return false
+}
+
 // withFakeHome returns a temp dir to use as HOME and a function that adds
 // HOME=<dir> + an empty PATH to the session's environment (so binary
 // detection finds nothing unless the test plants something).
@@ -38,11 +51,11 @@ func TestScenario41_InstallAllDetected(t *testing.T) {
 	r := s.runOK("skill", "install")
 	out := r.stdout
 	for _, line := range []string{"agents", "claude", "codex"} {
-		if !strings.Contains(out, line+"\tinstalled") {
+		if !hasRow(out, line, "installed") {
 			t.Errorf("expected %s installed; got:\n%s", line, out)
 		}
 	}
-	if !strings.Contains(out, "cursor\tskipped") {
+	if !hasRow(out, "cursor", "skipped") {
 		t.Errorf("expected cursor skipped; got:\n%s", out)
 	}
 	for _, p := range []string{
@@ -64,11 +77,11 @@ func TestScenario42_InstallNoClientsDetected(t *testing.T) {
 	home := withFakeHome(t, s)
 	r := s.runOK("skill", "install")
 	out := r.stdout
-	if !strings.Contains(out, "agents\tinstalled") {
+	if !hasRow(out, "agents", "installed") {
 		t.Errorf("agents should be installed unconditionally:\n%s", out)
 	}
 	for _, name := range []string{"claude", "codex", "cursor"} {
-		if !strings.Contains(out, name+"\tskipped") {
+		if !hasRow(out, name, "skipped") {
 			t.Errorf("%s should be skipped:\n%s", name, out)
 		}
 	}
@@ -88,17 +101,16 @@ func TestScenario43_SingleTargetInstall(t *testing.T) {
 	home := withFakeHome(t, s)
 	r := s.runOK("skill", "install", "--target", "claude")
 	out := r.stdout
-	if !strings.Contains(out, "claude\tinstalled") {
+	if !hasRow(out, "claude", "installed") {
 		t.Errorf("claude should be installed:\n%s", out)
 	}
-	// Other targets must not appear in the summary.
+	// Other targets must not appear as rows in the summary.
 	for _, name := range []string{"agents", "codex", "cursor"} {
-		if strings.Contains(out, name+"\t") && !strings.Contains(out, "target") {
-			// allow header line; check for the target as a row prefix only
-			for _, ln := range strings.Split(out, "\n") {
-				if strings.HasPrefix(ln, name+"\t") {
-					t.Errorf("%s should not appear in single-target install:\n%s", name, out)
-				}
+		for _, ln := range strings.Split(out, "\n") {
+			f := strings.Fields(ln)
+			if len(f) >= 2 && f[0] == name {
+				t.Errorf("%s should not appear in single-target install:\n%s", name, out)
+				break
 			}
 		}
 	}
@@ -161,7 +173,7 @@ func TestScenario47_Unchanged(t *testing.T) {
 	withFakeHome(t, s)
 	s.runOK("skill", "install", "--target", "claude")
 	r := s.runOK("skill", "install", "--target", "claude")
-	if !strings.Contains(r.stdout, "claude\tunchanged") {
+	if !hasRow(r.stdout, "claude", "unchanged") {
 		t.Errorf("expected unchanged on second install:\n%s", r.stdout)
 	}
 }
@@ -185,17 +197,17 @@ func TestScenario48_UpgradeOnlyInstalled(t *testing.T) {
 	r := s.runOK("skill", "upgrade")
 	out := r.stdout
 	// claude was installed -> updated or unchanged.
-	hasClaude := strings.Contains(out, "claude\tunchanged") || strings.Contains(out, "claude\tupdated")
+	hasClaude := hasRow(out, "claude", "unchanged") || hasRow(out, "claude", "updated")
 	if !hasClaude {
 		t.Errorf("claude should be updated/unchanged:\n%s", out)
 	}
-	hasAgents := strings.Contains(out, "agents\tunchanged") || strings.Contains(out, "agents\tupdated")
+	hasAgents := hasRow(out, "agents", "unchanged") || hasRow(out, "agents", "updated")
 	if !hasAgents {
 		t.Errorf("agents should be updated/unchanged:\n%s", out)
 	}
 	// codex/cursor were never installed -> skipped.
 	for _, name := range []string{"codex", "cursor"} {
-		if !strings.Contains(out, name+"\tskipped") {
+		if !hasRow(out, name, "skipped") {
 			t.Errorf("%s should be skipped:\n%s", name, out)
 		}
 	}
@@ -217,7 +229,7 @@ func TestScenario49_UninstallSiblingsIntact(t *testing.T) {
 	}
 	s.runOK("skill", "install", "--target", "claude")
 	r := s.runOK("skill", "uninstall", "--target", "claude")
-	if !strings.Contains(r.stdout, "claude\tremoved") {
+	if !hasRow(r.stdout, "claude", "removed") {
 		t.Errorf("expected removed:\n%s", r.stdout)
 	}
 	if _, err := os.Stat(filepath.Join(home, ".claude", "skills", "agented")); !os.IsNotExist(err) {

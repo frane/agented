@@ -1,6 +1,6 @@
 ---
 name: agented
-version: 1.0.0
+version: 1.1.0
 binary: ae
 description: Stateful, persistent text editor for LLM agents. Undo tree, marks, annotations, transactions. Backed by SQLite.
 ---

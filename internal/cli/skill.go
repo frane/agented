@@ -39,6 +39,7 @@ func newSkillInstallCmd(a *App) *cobra.Command {
 		target string
 		scope  string
 		dryRun bool
+		force  bool
 	)
 	c := &cobra.Command{
 		Use:     "install",
@@ -51,7 +52,7 @@ func newSkillInstallCmd(a *App) *cobra.Command {
 			if err := validateScopeFlag(scope); err != nil {
 				return wrapErrCode(1, err)
 			}
-			opts, err := buildInstallOpts(a, target, scope, dryRun)
+			opts, err := buildInstallOpts(a, target, scope, dryRun, force)
 			if err != nil {
 				return wrapErrCode(1, err)
 			}
@@ -63,6 +64,7 @@ func newSkillInstallCmd(a *App) *cobra.Command {
 		},
 	}
 	attachSkillFlags(c, &target, &scope, &dryRun)
+	c.Flags().BoolVarP(&force, "force", "f", false, "Overwrite even when content matches the embedded version")
 	return c
 }
 
@@ -103,6 +105,7 @@ func newSkillUpgradeCmd(a *App) *cobra.Command {
 		target string
 		scope  string
 		dryRun bool
+		force  bool
 	)
 	c := &cobra.Command{
 		Use:     "upgrade",
@@ -115,7 +118,7 @@ func newSkillUpgradeCmd(a *App) *cobra.Command {
 			if err := validateScopeFlag(scope); err != nil {
 				return wrapErrCode(1, err)
 			}
-			opts, err := buildInstallOpts(a, target, scope, dryRun)
+			opts, err := buildInstallOpts(a, target, scope, dryRun, force)
 			if err != nil {
 				return wrapErrCode(1, err)
 			}
@@ -127,6 +130,7 @@ func newSkillUpgradeCmd(a *App) *cobra.Command {
 		},
 	}
 	attachSkillFlags(c, &target, &scope, &dryRun)
+	c.Flags().BoolVarP(&force, "force", "f", false, "Overwrite even when content matches the embedded version")
 	return c
 }
 
@@ -235,7 +239,7 @@ func workspaceForScope(a *App, scope string) (string, error) {
 }
 
 // buildInstallOpts assembles InstallOptions from CLI flags.
-func buildInstallOpts(a *App, target, scope string, dryRun bool) (skill.InstallOptions, error) {
+func buildInstallOpts(a *App, target, scope string, dryRun, force bool) (skill.InstallOptions, error) {
 	ws, err := workspaceForScope(a, scope)
 	if err != nil {
 		return skill.InstallOptions{}, err
@@ -245,6 +249,7 @@ func buildInstallOpts(a *App, target, scope string, dryRun bool) (skill.InstallO
 		Scope:     parseScope(scope),
 		Workspace: ws,
 		DryRun:    dryRun,
+		Force:     force,
 	}, nil
 }
 
@@ -252,14 +257,19 @@ func buildInstallOpts(a *App, target, scope string, dryRun bool) (skill.InstallO
 // to the right exit code (1 user-error already returned earlier; 2 if any
 // target errored; otherwise 0).
 func finishSkillRun(w io.Writer, results []skill.Result, dryRun bool) error {
-	fmt.Fprintln(w, "target\tstatus\tdetail")
+	tw := newTabWriter(w)
+	fmt.Fprintln(tw, "target\tstatus\tversion\tdetail")
 	var anyOK, anyErr bool
 	for _, r := range results {
 		detail := displayPath(r.Path)
 		if r.Reason != "" && (r.Status == skill.StatusSkipped || r.Status == skill.StatusError) {
 			detail = r.Reason
 		}
-		fmt.Fprintf(w, "%s\t%s\t%s\n", r.Target, r.Status, detail)
+		ver := r.Version
+		if ver == "" {
+			ver = "—"
+		}
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", r.Target, r.Status, ver, detail)
 		switch r.Status {
 		case skill.StatusInstalled, skill.StatusUpdated, skill.StatusUnchanged,
 			skill.StatusWouldInstall, skill.StatusWouldUpdate:
@@ -268,6 +278,7 @@ func finishSkillRun(w io.Writer, results []skill.Result, dryRun bool) error {
 			anyErr = true
 		}
 	}
+	tw.Flush()
 	if anyErr {
 		return wrapErrCode(2, errors.New("one or more skill targets failed"))
 	}

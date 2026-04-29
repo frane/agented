@@ -26,6 +26,7 @@ func newRulesInstallCmd(a *App) *cobra.Command {
 		target string
 		scope  string
 		dryRun bool
+		force  bool
 	)
 	c := &cobra.Command{
 		Use:   "install",
@@ -46,6 +47,7 @@ func newRulesInstallCmd(a *App) *cobra.Command {
 				Scope:     parseRulesScope(scope),
 				Workspace: ws,
 				DryRun:    dryRun,
+				Force:     force,
 			})
 			if err != nil {
 				return wrapErrCode(1, err)
@@ -54,6 +56,7 @@ func newRulesInstallCmd(a *App) *cobra.Command {
 		},
 	}
 	attachRulesFlags(c, &target, &scope, &dryRun)
+	c.Flags().BoolVarP(&force, "force", "f", false, "Overwrite even when the section already matches")
 	return c
 }
 
@@ -201,14 +204,19 @@ func parseRulesScope(s string) rules.Scope {
 }
 
 func finishRulesRun(a *App, results []rules.Result) error {
-	fmt.Fprintln(a.Stdout, "target\tstatus\tpath\tbackup")
+	tw := newTabWriter(a.Stdout)
+	fmt.Fprintln(tw, "target\tstatus\tversion\tpath\tbackup")
 	anyErr := false
 	for _, r := range results {
 		path := displayPath(r.Path)
 		if r.Reason != "" && r.Status != rules.StatusInstalled && r.Status != rules.StatusUpgraded && r.Status != rules.StatusRemoved {
 			path = r.Reason
 		}
-		fmt.Fprintf(a.Stdout, "%s\t%s\t%s\t%s\n", r.Target, r.Status, path, displayPath(r.Backup))
+		ver := r.Version
+		if ver == "" {
+			ver = "—"
+		}
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n", r.Target, r.Status, ver, path, displayPath(r.Backup))
 		if r.Status == rules.StatusError {
 			anyErr = true
 		}
@@ -216,6 +224,7 @@ func finishRulesRun(a *App, results []rules.Result) error {
 			fmt.Fprintf(a.Stderr, "warning: %s contains agented-related text outside any markers at lines %v; review the file before re-running\n", r.Path, r.Conflict)
 		}
 	}
+	tw.Flush()
 	if anyErr {
 		return wrapErrCode(2, errors.New("one or more rules targets failed"))
 	}

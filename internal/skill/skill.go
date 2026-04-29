@@ -17,7 +17,7 @@ import (
 
 // Version is the canonical version of the embedded SKILL.md. Bump when
 // changing the skill content.
-const Version = "1.0.0"
+const Version = "1.1.0"
 
 //go:embed SKILL.md
 var content string
@@ -53,7 +53,8 @@ type Result struct {
 	Target string
 	Status Status
 	Path   string
-	Reason string // populated when Status is skipped/error/not-found
+	Reason  string // populated when Status is skipped/error/not-found
+	Version string // version that was just installed (empty for skipped/error)
 }
 
 // InstallOptions parameterizes Install/Upgrade.
@@ -68,6 +69,8 @@ type InstallOptions struct {
 	Workspace string
 	// DryRun reports actions without performing writes.
 	DryRun bool
+	// Force overwrites even when on-disk content matches the embedded content.
+	Force bool
 }
 
 // Install writes SKILL.md to one or more targets per opts. It returns one

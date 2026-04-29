@@ -83,10 +83,10 @@ func installOne(t *Target, opts InstallOptions) Result {
 	if path == "" {
 		return Result{Target: t.Name, Status: StatusSkipped, Reason: "not supported in chosen scope"}
 	}
-	r := Result{Target: t.Name, Path: path}
+	r := Result{Target: t.Name, Path: path, Version: Version}
 	existing, ok := readExisting(path)
 	switch {
-	case ok && existing == content:
+	case ok && existing == content && !opts.Force:
 		r.Status = StatusUnchanged
 	case ok:
 		if opts.DryRun {

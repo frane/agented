@@ -16,7 +16,7 @@ import (
 )
 
 // Version is the canonical rules-template version embedded in BEGIN markers.
-const Version = "v0.1.0"
+const Version = "v0.1.1"
 
 //go:embed template.md
 var templateBody []byte
@@ -55,6 +55,7 @@ type Result struct {
 	Reason   string
 	Diff     string
 	Conflict []int // line numbers from heuristic conflict detection
+	Version  string
 }
 
 // Scope discriminates project vs global install paths.
@@ -171,6 +172,7 @@ type InstallOptions struct {
 	Scope     Scope
 	Workspace string
 	DryRun    bool
+	Force     bool
 }
 
 // Install writes the section to selected targets.
@@ -245,8 +247,8 @@ func applyOne(t *Target, opts InstallOptions) Result {
 	if err != nil {
 		return Result{Target: t.Name, Status: StatusError, Path: path, Reason: err.Error()}
 	}
-	if present && len(existing) > 0 && bytesTrim(existing) == bytesTrim(body) {
-		return Result{Target: t.Name, Status: StatusUnchanged, Path: path}
+	if present && len(existing) > 0 && bytesTrim(existing) == bytesTrim(body) && !opts.Force {
+		return Result{Target: t.Name, Status: StatusUnchanged, Path: path, Version: Version}
 	}
 	conflictLines := []int{}
 	if !present {
@@ -258,7 +260,7 @@ func applyOne(t *Target, opts InstallOptions) Result {
 	newContent := section.Replace(original, body)
 	if opts.DryRun {
 		d, _ := editor.DryRun(newContent)
-		return Result{Target: t.Name, Status: StatusWould, Path: path, Diff: d, Conflict: conflictLines}
+		return Result{Target: t.Name, Status: StatusWould, Path: path, Diff: d, Conflict: conflictLines, Version: Version}
 	}
 	backup, err := editor.Write(newContent)
 	if err != nil {
@@ -268,7 +270,7 @@ func applyOne(t *Target, opts InstallOptions) Result {
 	if present {
 		status = StatusUpgraded
 	}
-	return Result{Target: t.Name, Status: status, Path: path, Backup: backup, Conflict: conflictLines}
+	return Result{Target: t.Name, Status: status, Path: path, Backup: backup, Conflict: conflictLines, Version: Version}
 }
 
 func resolvePath(t *Target, opts InstallOptions) (string, error) {

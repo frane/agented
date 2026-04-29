@@ -2,6 +2,14 @@
 
 All notable changes to agented are documented here. The format is based on [Keep a Changelog](https://keepachangelog.com), and the project follows [Semantic Versioning](https://semver.org).
 
+## [v0.2.3] - 2026-04-29
+
+### Features
+
+- **`ae skill install` shows a version column** so it is clear which version is being installed (or has just been installed). `ae rules install` gained the same column. The "unchanged" status now means "on-disk content already matches the embedded version" — no longer ambiguous.
+- **`--force` / `-f`** on `ae skill install`, `ae skill upgrade`, and `ae rules install`: re-write the file even when the on-disk content already matches the embedded copy. Useful for bit-for-bit re-installs after manual edits or to reset backups.
+- **Skill version bumped to 1.1.0** and **rules section version bumped to v0.1.1** so re-running `ae skill install` / `ae rules install` after upgrading the binary actually flips status from "unchanged" to "updated". Previous releases shipped new SKILL.md content under the old version constants, leaving the binary unable to detect that disk and embedded content had diverged.
+
 ## [v0.2.2] - 2026-04-29
 
 ### Features
