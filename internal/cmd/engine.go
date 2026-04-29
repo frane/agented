@@ -131,6 +131,7 @@ type LogResult struct {
 
 // EditResult is for replace/insert/delete.
 type EditResult struct {
+	Path         string // file path (for rich-diff rendering)
 	NewEditID    int64
 	NewHeadID    int64
 	LineDelta    int

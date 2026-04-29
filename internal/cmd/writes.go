@@ -48,7 +48,7 @@ func (e *Engine) Replace(in ReplaceInput) (*Result, error) {
 	return &Result{
 		FileID: &fi.ID, EditID: &er.NewEditID, StateToken: er.NewStateToken,
 		Warning: warning,
-		Edit: &EditResult{
+		Edit: &EditResult{Path: fi.Path,
 			NewEditID: er.NewEditID, NewHeadID: er.NewHeadID,
 			LineDelta: er.LineDelta, NewLineCount: er.NewLineCount,
 		},
@@ -79,7 +79,7 @@ func (e *Engine) replacePattern(in ReplaceInput) (*Result, error) {
 		return &Result{
 			FileID:     &fi.ID,
 			StateToken: store.ComputeStateToken(fi.ID, fi.HeadEditID, fi.ContentHash),
-			Edit: &EditResult{
+			Edit: &EditResult{Path: fi.Path,
 				NewEditID:    fi.HeadEditID,
 				NewHeadID:    fi.HeadEditID,
 				LineDelta:    0,
@@ -112,7 +112,7 @@ func (e *Engine) replacePattern(in ReplaceInput) (*Result, error) {
 	}
 	return &Result{
 		FileID: &fi.ID, EditID: &er.NewEditID, StateToken: er.NewStateToken,
-		Edit: &EditResult{
+		Edit: &EditResult{Path: fi.Path,
 			NewEditID: er.NewEditID, NewHeadID: er.NewHeadID,
 			LineDelta: er.LineDelta, NewLineCount: er.NewLineCount,
 		},
@@ -149,7 +149,7 @@ func (e *Engine) Insert(in InsertInput) (*Result, error) {
 	return &Result{
 		FileID: &fi.ID, EditID: &er.NewEditID, StateToken: er.NewStateToken,
 		Warning: warning,
-		Edit: &EditResult{
+		Edit: &EditResult{Path: fi.Path,
 			NewEditID: er.NewEditID, NewHeadID: er.NewHeadID,
 			LineDelta: er.LineDelta, NewLineCount: er.NewLineCount,
 		},
@@ -183,7 +183,7 @@ func (e *Engine) Delete(in DeleteInput) (*Result, error) {
 	return &Result{
 		FileID: &fi.ID, EditID: &er.NewEditID, StateToken: er.NewStateToken,
 		Warning: warning,
-		Edit: &EditResult{
+		Edit: &EditResult{Path: fi.Path,
 			NewEditID: er.NewEditID, NewHeadID: er.NewHeadID,
 			LineDelta: er.LineDelta, NewLineCount: er.NewLineCount,
 		},

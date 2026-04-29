@@ -64,7 +64,7 @@ func newRulesShowCmd(a *App) *cobra.Command {
 	)
 	c := &cobra.Command{
 		Use:   "show",
-		Short: "Print the diff that install would write, without writing",
+		Short: "Print the section that install would write, plus per-target status",
 		RunE: func(_ *cobra.Command, _ []string) error {
 			if err := validateOneOf("--target", target, validRulesTargets); err != nil {
 				return wrapErrCode(1, err)
@@ -85,14 +85,30 @@ func newRulesShowCmd(a *App) *cobra.Command {
 			if err != nil {
 				return wrapErrCode(1, err)
 			}
-			fmt.Fprintln(a.Stdout, "target\tstatus\tpath")
+			// Section body once at the top.
+			fmt.Fprintf(a.Stdout, "section to install (%s):\n", rules.Section().BeginMarker)
+			for _, line := range strings.Split(strings.TrimRight(string(rules.Body()), "\n"), "\n") {
+				fmt.Fprintf(a.Stdout, "  %s\n", line)
+			}
+			fmt.Fprintln(a.Stdout)
+			// Aligned per-target status table.
+			fmt.Fprintln(a.Stdout, "targets:")
+			maxName := 0
+			maxStatus := 0
 			for _, r := range results {
-				fmt.Fprintf(a.Stdout, "%s\t%s\t%s\n", r.Target, r.Status, displayPath(r.Path))
-				if r.Diff != "" {
-					fmt.Fprintln(a.Stdout, "---diff---")
-					fmt.Fprint(a.Stdout, r.Diff)
-					fmt.Fprintln(a.Stdout, "---end---")
+				if l := len(r.Target); l > maxName {
+					maxName = l
 				}
+				if l := len(string(r.Status)); l > maxStatus {
+					maxStatus = l
+				}
+			}
+			for _, r := range results {
+				detail := displayPath(r.Path)
+				if r.Reason != "" {
+					detail = r.Reason
+				}
+				fmt.Fprintf(a.Stdout, "  %-*s   %-*s   %s\n", maxName, r.Target, maxStatus, r.Status, detail)
 			}
 			return nil
 		},

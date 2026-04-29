@@ -27,13 +27,19 @@ func newSetupCmd(a *App) *cobra.Command {
 		dryRun            bool
 		yes               bool
 		uninstall         bool
+		legacyFlow        bool
 	)
 	c := &cobra.Command{
 		Use:   "setup",
-		Short: "Install ae's skill, rules, and permissions in one go",
+		Short: "Detect agents on this machine and install ae's components for the ones you choose",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) == 1 && args[0] == "show" {
 				return runSetupShow(a, target, resolveSetupScopes(scope, scopeSkill, scopeRules, scopePerms))
+			}
+			// New default: agent-centric wizard. The legacy per-component flow
+			// is kept under `ae setup --legacy` for scripts that depend on it.
+			if !legacyFlow {
+				return runWizard(a, dryRun, yes)
 			}
 			scopes := resolveSetupScopes(scope, scopeSkill, scopeRules, scopePerms)
 			return runSetup(a, target, scopes, dryRun, yes, uninstall)
@@ -48,6 +54,7 @@ func newSetupCmd(a *App) *cobra.Command {
 	c.Flags().BoolVarP(&dryRun, "dry-run", "n", false, "Preview without writing")
 	c.Flags().BoolVarP(&yes, "yes", "y", false, "Skip per-step prompts")
 	c.Flags().BoolVar(&uninstall, "uninstall", false, "Run uninstalls in reverse instead of installs")
+	c.Flags().BoolVar(&legacyFlow, "legacy", false, "Use the per-component flow instead of the agent-centric wizard")
 	return c
 }
 

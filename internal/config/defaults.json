@@ -27,7 +27,9 @@
   },
   "output": {
     "default_format": "tab",
-    "include_state_token": true
+    "include_state_token": true,
+    "rich_diff": "auto",
+    "syntax_highlight": true
   },
   "skill": {
     "enforce_version": "major"
@@ -40,8 +42,5 @@
   "logging": {
     "level": "info",
     "destination": "stderr"
-  },
-  "workspace": {
-    "auto_create": "root-only"
   }
 }
