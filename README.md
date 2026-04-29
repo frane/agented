@@ -43,6 +43,18 @@ ae an foo.go add -t "auth path is fragile, see 4f2a"
 ae w foo.go
 ```
 
+The same shape covers recovery. Imagine the agent makes thirty edits over an hour, you walk away, come back to find it went off the rails around edit 18, but edits 19–23 are still useful:
+
+```sh
+ae br foo.go                             # see the leaves; current head is the bad one
+ae head foo.go --edit 23                 # jump back to the last good state
+ae v foo.go                              # confirm what's there
+ae s foo.go -r 40:42 -w "..." -x <token> # continue forward; this creates a sibling branch
+```
+
+The wrong path is still in the tree, addressable by edit_id if you ever want to look. With linear undo this scenario is "rollback the entire transaction or live with the bad version." With the tree it's a `head --edit` and a `view`.
+
+
 When two agents edit the same file at once, the second write rejects with a state-token conflict (exit 3). The conflict response carries the new state token and the current content of the affected range, so the second agent can decide in one round trip: retry on the new head, or take the original token's edit and explore that branch deliberately. Either way both edits are addressable in the tree afterwards. `ae br foo.go` shows the leaves. Pruning, transaction timeouts, stale-buffer detection are all in `.agented/config.json`; the agent doesn't have to think about any of it.
 
 ## The skill
@@ -52,6 +64,19 @@ Run `ae skill install` once and a `SKILL.md` lands in every detected client's sk
 The skill is half of why this works at all. It documents every verb in both forms, pairs every error with the recovery action, and walks through six full sessions covering the patterns that actually come up: read-modify-verify on a single function, a multi-file transactional refactor that rolls back when the tests fail, backtracking after a wrong turn, and leaving a handoff for the next session.
 
 Annotations are worth their own paragraph because most people miss them on first read. They're per-file notes the agent leaves for whoever opens the file next. `ae open` returns them inline, so the first thing any new session sees is what previous sessions thought was worth remembering. An agent's working memory is whatever fits in its context window, and that memory ends when the session ends. Annotations are how it persists across that gap.
+
+## Permissions
+
+`ae` integrates with editor harnesses (Claude Code today; Codex when its config schema lands) so you don't get permission-prompted on every invocation. `ae permissions install` writes allow-rules into the detected client's config so `Bash(ae *)` and `Bash(./ae *)` go through without confirmation. Same Target-driven design as `ae skill install`:
+
+```sh
+ae permissions install --target claude --scope project   # writes .claude/settings.local.json
+ae permissions install --target claude --scope global    # writes ~/.claude/settings.json
+ae permissions list --scope project                      # show what's configured where
+ae permissions uninstall --target claude                 # remove ae's rules; sibling rules untouched
+```
+
+Default `--target all` writes to every detected client; default `--scope project` keeps the changes machine-local and gitignored. `--dry-run` shows what would be written.
 
 ## Configuration
 
