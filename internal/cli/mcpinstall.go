@@ -161,10 +161,16 @@ func resolveSelfPath() string {
 }
 
 func printMCPResults(w io.Writer, results []mcpinstall.Result, dryRun bool) error {
-	fmt.Fprintln(w, "target\tstatus\tpath\treason")
+	tw := newTabWriter(w)
+	fmt.Fprintln(tw, "target\tstatus\tpath\treason")
 	for _, r := range results {
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", r.Target, r.Status, r.Path, r.Reason)
+		reason := r.Reason
+		if reason == "" {
+			reason = "—"
+		}
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", r.Target, r.Status, displayPath(r.Path), reason)
 	}
+	tw.Flush()
 	if dryRun {
 		fmt.Fprintln(w, "(dry run, no files modified)")
 	}

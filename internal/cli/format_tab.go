@@ -61,30 +61,32 @@ func emitTab(w io.Writer, r *cmd.Result, header, includeToken bool) error {
 					s.OpenTx.ID, s.OpenTx.Actor, s.OpenTx.StartedAt.Format("2006-01-02T15:04:05Z"))
 			}
 			if len(s.WorkspaceFiles) > 0 {
+				tw := newTabWriter(w)
 				if header {
-					fmt.Fprintln(w, "ws_file\tpath\thead_edit_id\tannotations\tbranches\tdirty\ttx_id\tlast_actor\tlast_modified\tclosed\tstate_token")
+					fmt.Fprintln(tw, "ws_file\tpath\thead_edit_id\tannotations\tbranches\tdirty\ttx_id\tlast_actor\tlast_modified\tclosed\tstate_token")
 				}
 				for _, row := range s.WorkspaceFiles {
 					dirty := "clean"
 					if row.Dirty {
 						dirty = "dirty"
 					}
-					txid := ""
+					txid := "—"
 					if row.TransactionID != nil {
 						txid = fmt.Sprintf("%d", *row.TransactionID)
 					}
-					closed := ""
+					closed := "—"
 					if row.Closed {
 						closed = "closed"
 					}
-					ts := ""
+					ts := "—"
 					if !row.LastModified.IsZero() {
 						ts = row.LastModified.Format("2006-01-02T15:04:05Z")
 					}
-					fmt.Fprintf(w, "ws_file\t%s\t%d\t%d\t%d\t%s\t%s\t%s\t%s\t%s\t%s\n",
+					fmt.Fprintf(tw, "ws_file\t%s\t%d\t%d\t%d\t%s\t%s\t%s\t%s\t%s\t%s\n",
 						row.Path, row.HeadEditID, row.Annotations, row.Branches,
 						dirty, txid, row.LastActor, ts, closed, row.StateToken)
 				}
+				tw.Flush()
 				if r.StateToken != "" {
 					fmt.Fprintf(w, "workspace_state_token\t%s\n", r.StateToken)
 				}

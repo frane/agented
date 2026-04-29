@@ -70,15 +70,21 @@ func newPermListCmd(a *App) *cobra.Command {
 		RunE: func(_ *cobra.Command, _ []string) error {
 			ws, _ := workspaceForScope(a, scope)
 			entries := permissions.List(parsePermScope(scope), ws)
-			fmt.Fprintln(a.Stdout, "target\tdetected\tinstalled\tpath\trules")
+			tw := newTabWriter(a.Stdout)
+			fmt.Fprintln(tw, "target\tdetected\tinstalled\tpath\trules")
 			for _, e := range entries {
 				inst := "no"
 				if e.Installed {
 					inst = "yes"
 				}
-				fmt.Fprintf(a.Stdout, "%s\t%s\t%s\t%s\t%s\n",
-					e.Target, e.Detected, inst, displayPath(e.Path), strings.Join(e.Rules, ","))
+				rules := strings.Join(e.Rules, ",")
+				if rules == "" {
+					rules = "—"
+				}
+				fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n",
+					e.Target, e.Detected, inst, displayPath(e.Path), rules)
 			}
+			tw.Flush()
 			return nil
 		},
 	}

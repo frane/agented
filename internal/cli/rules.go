@@ -125,15 +125,17 @@ func newRulesListCmd(a *App) *cobra.Command {
 		RunE: func(_ *cobra.Command, _ []string) error {
 			ws, _ := workspaceForScope(a, "project")
 			entries := rules.List(ws)
-			fmt.Fprintln(a.Stdout, "target\tdetected\tproject\tglobal\tproject_version\tglobal_version")
+			tw := newTabWriter(a.Stdout)
+			fmt.Fprintln(tw, "target\tdetected\tproject\tglobal\tproject_version\tglobal_version")
 			for _, e := range entries {
 				p := boolStr(e.ProjectVersion != "")
 				g := boolStr(e.GlobalVersion != "")
 				pv := dashIfEmpty(e.ProjectVersion)
 				gv := dashIfEmpty(e.GlobalVersion)
-				fmt.Fprintf(a.Stdout, "%s\t%s\t%s\t%s\t%s\t%s\n",
+				fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\n",
 					e.Target, e.Detected, p, g, pv, gv)
 			}
+			tw.Flush()
 			return nil
 		},
 	}
