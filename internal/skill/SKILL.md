@@ -54,6 +54,9 @@ Most LLMs were trained on `Read → Edit → Read → Edit` and reach for the sa
 - **Don't `ae status` just to refetch a state_token.** Every write returns the new token in the result. Thread it forward. The only reason to call `ae status` is when you explicitly need workspace-level info (open files, dirty flags, current actor).
 - **Don't `ae open` more than once per file per session.** The first-touch rule covers the registration. Subsequent reads/writes auto-resolve the same FileInfo. Auto-open also kicks in transparently if you forget — `ae search foo.go` registers the file silently when needed.
 
+- **Don't pipe ae output through `| head`/`| tail`/`| grep`.** Every read verb has `--range`, `--limit`, or `--pattern` to bound output server-side. `ae view foo.go -r 42:50` already returns 9 lines; the `| head -10` is dead weight. `ae find x --limit 20` already caps. Pipe-trimming after the fact wastes the round trip's setup cost.
+- **Don't append `2>&1`.** ae uses exit codes — 0 success, 3 conflict (with full content payload on stdout), 1/2 for errors. Stderr is ae's own diagnostic noise; merging it into stdout means you parse around it. Just read stdout.
+
 Translation: the canonical loop is `open → search/find → replace/insert/delete → repeat`. Three calls per logical edit, sometimes two. Not five.
 ## What this editor does that Read/Edit/Write can't
 
