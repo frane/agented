@@ -19,8 +19,8 @@ OS=""
 ARCH=""
 
 case "$(uname -s)" in
-    Linux*)  OS="Linux" ;;
-    Darwin*) OS="Darwin" ;;
+    Linux*)  OS="linux" ;;
+    Darwin*) OS="darwin" ;;
     *)
         echo "unsupported os: $(uname -s)" >&2
         echo "for windows or other platforms, download from https://github.com/$REPO/releases" >&2
