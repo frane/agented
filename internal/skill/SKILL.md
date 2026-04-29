@@ -44,6 +44,17 @@ Skipping this step costs you. If you `Read` first, the agent runtime has the byt
 
 The trained habit ("read before write to be safe") doesn't apply here. ae reports drift via full-content rejection payloads. Read once at session start. Edit forward.
 
+## Round-trip economy: don't over-fetch
+
+Most LLMs were trained on `Read → Edit → Read → Edit` and reach for the same shape with ae. Don't. ae's contract eliminates almost every "look first to be safe" round-trip. Specific anti-patterns:
+
+- **Don't `ae view` before `ae replace`/`insert`/`delete`.** You already know the line range from `ae open` (or `ae search`). If you're wrong, the write rejects with the current content attached (exit 3); you reconcile and retry. One trip on success, one trip on conflict. View-first burns a trip every time, success or not.
+- **Don't `ae view` before `ae search`.** Search returns `line\tcol\ttext` per match. That's the answer. View only after if you need surrounding context.
+- **Don't `ae load` before reading.** Auto-load on drift is on by default. Every write verb stat-s the file and reconciles disk changes itself. `ae load` is only for the rare case where you specifically want to capture a disk snapshot as an edit without modifying anything else.
+- **Don't `ae status` just to refetch a state_token.** Every write returns the new token in the result. Thread it forward. The only reason to call `ae status` is when you explicitly need workspace-level info (open files, dirty flags, current actor).
+- **Don't `ae open` more than once per file per session.** The first-touch rule covers the registration. Subsequent reads/writes auto-resolve the same FileInfo. Auto-open also kicks in transparently if you forget — `ae search foo.go` registers the file silently when needed.
+
+Translation: the canonical loop is `open → search/find → replace/insert/delete → repeat`. Three calls per logical edit, sometimes two. Not five.
 ## What this editor does that Read/Edit/Write can't
 
 These are the operations that motivate reaching for `ae` over the built-ins.

@@ -5,7 +5,6 @@ package cmd
 
 import (
 	"errors"
-	"fmt"
 	"os"
 
 	"github.com/frane/agented/internal/config"
@@ -355,35 +354,52 @@ func (e *Engine) maybeRunScheduledPrune() error {
 }
 
 // resolveFile returns the open FileInfo for path.
+// resolveFile returns FileInfo for an open file. If the file is not yet
+// registered in the workspace, auto-opens it so read verbs (search/view/
+// find/diff/log/branches) just work without a prior `ae open`. The file
+// must exist on disk, otherwise the underlying Store.OpenFile auto-creates
+// an empty file (matches `ae open`'s behaviour).
 func (e *Engine) resolveFile(path string) (*store.FileInfo, error) {
 	abs, err := store.AbsPath(path)
 	if err != nil {
 		return nil, err
 	}
 	fi, err := e.Store.FileByPath(abs, true)
-	if err != nil {
-		if errors.Is(err, store.ErrFileNotFound) {
-			return nil, fmt.Errorf("%w: %s (run `ae open` first)", store.ErrFileNotFound, abs)
-		}
+	if err == nil {
+		return fi, nil
+	}
+	if !errors.Is(err, store.ErrFileNotFound) {
 		return nil, err
 	}
-	return fi, nil
+	// Auto-open: register the file in the workspace.
+	r, oerr := e.Store.OpenFile(e.Actor, abs)
+	if oerr != nil {
+		return nil, oerr
+	}
+	out := r.File
+	return &out, nil
 }
 
 // resolveFileAny returns FileInfo for path including closed files.
+// Auto-opens like resolveFile when the file is not yet registered at all.
 func (e *Engine) resolveFileAny(path string) (*store.FileInfo, error) {
 	abs, err := store.AbsPath(path)
 	if err != nil {
 		return nil, err
 	}
 	fi, err := e.Store.FileByPath(abs, false)
-	if err != nil {
-		if errors.Is(err, store.ErrFileNotFound) {
-			return nil, fmt.Errorf("%w: %s (run `ae open` first)", store.ErrFileNotFound, abs)
-		}
+	if err == nil {
+		return fi, nil
+	}
+	if !errors.Is(err, store.ErrFileNotFound) {
 		return nil, err
 	}
-	return fi, nil
+	r, oerr := e.Store.OpenFile(e.Actor, abs)
+	if oerr != nil {
+		return nil, oerr
+	}
+	out := r.File
+	return &out, nil
 }
 
 // fileExists is a tiny helper used by save/load.
