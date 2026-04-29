@@ -27,7 +27,11 @@ Every read returns a `state_token`. Pass it to your next write with `--expect`. 
 
 You don't need to "view before write" — the editor will tell you if your assumption is stale. You don't need to "branches before undo" — undo's error includes the branches if there's ambiguity. You don't need to "status before edit" — every operation's response carries the state you'd want to check.
 
-If `concurrency.require_expect` is `writes` (the default), writes without `--expect` are rejected with the current state attached. Use the returned `state_token` for all subsequent writes.
+The default is `concurrency.require_expect: warn`: writes without `--expect` succeed and emit a stderr warning. For multi-agent setups, set `require_expect: writes` in `.agented/config.json` to enforce strict pre-write checks. In either mode, an actual conflict (a stale `--expect` value) is rejected with exit 3 and the recovery payload — the tree never silently loses work.
+
+**Short forms are the default in agent contexts.** Long forms exist for documentation and human readers; agent calls should use the shorter form to save tokens. `ae s foo.go -r 12:14 -w "..." -x ab12cd34` is the canonical shape, not `ae replace foo.go --range 12:14 --with "..." --expect ab12cd34`.
+
+**For multi-line content, pipe via `-i` (--from-stdin) or use `-f <path>` (--text-file).** Stdin is auto-detected when piped, so `cat patch.txt | ae s foo.go -r 12:14 -i` and `echo "..." | ae i foo.go -A 0 -i` work without quoting tricks.
 
 ## Reading verbs (idempotent, cheap)
 

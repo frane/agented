@@ -714,6 +714,7 @@ func TestScenario22_ConflictDetection(t *testing.T) {
 // =====================================================================
 func TestScenario23_FirstWriteWithoutExpect(t *testing.T) {
 	s := newSession(t)
+	s.runOK("config", "set", "concurrency.require_expect", "writes")
 	s.writeFile("a.txt", "1\n2\n")
 	s.runOK("open", "a.txt")
 	r := s.run("replace", "a.txt", "--range", "1:1", "--with", "X\n")
@@ -743,6 +744,7 @@ func TestScenario23_FirstWriteWithoutExpect(t *testing.T) {
 // =====================================================================
 func TestScenario24_ConflictPayloadJSON(t *testing.T) {
 	s := newSession(t)
+	s.runOK("config", "set", "concurrency.require_expect", "writes")
 	s.writeFile("a.txt", "alpha\nbeta\n")
 	s.runOK("open", "a.txt")
 	r := s.run("--json", "replace", "a.txt", "--range", "1:1", "--with", "X\n")

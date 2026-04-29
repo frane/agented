@@ -106,6 +106,8 @@ func TestCLIInvalidRangeReturnsExit1(t *testing.T) {
 func TestCLIConflictReturnsExit3(t *testing.T) {
 	dir := t.TempDir()
 	runAE(t, dir, "init")
+	// Default is "warn"; test the strict path explicitly.
+	runAE(t, dir, "config", "set", "concurrency.require_expect", "writes")
 	p := filepath.Join(dir, "a.txt")
 	os.WriteFile(p, []byte("1\n"), 0o644)
 	runAE(t, dir, "open", "a.txt")
@@ -115,6 +117,22 @@ func TestCLIConflictReturnsExit3(t *testing.T) {
 	}
 	if !strings.Contains(out, "conflict") {
 		t.Errorf("expected conflict in stdout: %s", out)
+	}
+}
+
+func TestCLIWarnModeAllowsWriteWithoutExpect(t *testing.T) {
+	dir := t.TempDir()
+	runAE(t, dir, "init")
+	// Default is "warn" — write should succeed without --expect.
+	p := filepath.Join(dir, "a.txt")
+	os.WriteFile(p, []byte("1\n"), 0o644)
+	runAE(t, dir, "open", "a.txt")
+	code, out, _ := runAE(t, dir, "replace", "a.txt", "--range", "1:1", "--with", "X\n")
+	if code != 0 {
+		t.Errorf("warn mode should allow write without --expect, got %d (out=%s)", code, out)
+	}
+	if !strings.Contains(out, "edit_id=") {
+		t.Errorf("expected successful edit output: %s", out)
 	}
 }
 

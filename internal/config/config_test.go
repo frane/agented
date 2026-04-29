@@ -12,7 +12,7 @@ import (
 
 func TestDefaultsParse(t *testing.T) {
 	c := config.Defaults()
-	if c.Concurrency.RequireExpect != "writes" {
+	if c.Concurrency.RequireExpect != "warn" {
 		t.Errorf("require_expect: got %q", c.Concurrency.RequireExpect)
 	}
 	if !c.AutoPrune.Enabled {
@@ -172,7 +172,7 @@ func TestValidateRejectsBadEnum(t *testing.T) {
 func TestFlattenLeaves(t *testing.T) {
 	c := config.Defaults()
 	leaves := config.FlattenLeaves(c)
-	if leaves["concurrency.require_expect"] != "writes" {
+	if leaves["concurrency.require_expect"] != "warn" {
 		t.Errorf("flatten require_expect: %q", leaves["concurrency.require_expect"])
 	}
 	if leaves["auto_prune.enabled"] != "true" {

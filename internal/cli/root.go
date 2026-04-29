@@ -39,11 +39,11 @@ func Build(versionInfo cmd.VersionInput, stdin io.Reader, stdout, stderr io.Writ
 			return app.postRun(cmd, args)
 		},
 	}
-	root.PersistentFlags().StringVar(&app.AsActor, "as", "", "Actor identity for this invocation (overrides AE_ACTOR and config)")
+	root.PersistentFlags().StringVarP(&app.AsActor, "as", "a", "", "Actor identity for this invocation (overrides AE_ACTOR and config)")
 	root.PersistentFlags().StringVar(&app.OutputFormat, "format", "", "Output format: tab | json")
-	root.PersistentFlags().BoolVar(&app.JSONFlag, "json", false, "Shortcut for --format=json")
-	root.PersistentFlags().BoolVar(&app.Header, "header", false, "Print a header line above tab output")
-	root.PersistentFlags().StringVar(&app.WorkspaceOverride, "workspace", "", "Path to .agented dir; overrides discovery")
+	root.PersistentFlags().BoolVarP(&app.JSONFlag, "json", "j", false, "Shortcut for --format=json")
+	root.PersistentFlags().BoolVarP(&app.Header, "header", "H", false, "Print a header line above tab output")
+	root.PersistentFlags().StringVarP(&app.WorkspaceOverride, "workspace", "W", "", "Path to .agented dir; overrides discovery")
 
 	registerVerbs(app, root)
 	return root

@@ -82,7 +82,7 @@ func newPermListCmd(a *App) *cobra.Command {
 			return nil
 		},
 	}
-	c.Flags().StringVarP(&scope, "scope", "S", "global", "Scope: global | project")
+	c.Flags().StringVarP(&scope, "scope", "s", "global", "Scope: global | project")
 	return c
 }
 
@@ -123,9 +123,9 @@ func newPermUninstallCmd(a *App) *cobra.Command {
 }
 
 func attachPermFlags(c *cobra.Command, target, scope *string, dryRun *bool) {
-	c.Flags().StringVarP(target, "target", "T", "all",
+	c.Flags().StringVarP(target, "target", "t", "all",
 		fmt.Sprintf("Target: %s", strings.Join(validPermTargets, " | ")))
-	c.Flags().StringVarP(scope, "scope", "S", "project", "Scope: global | project")
+	c.Flags().StringVarP(scope, "scope", "s", "project", "Scope: global | project")
 	c.Flags().BoolVarP(dryRun, "dry-run", "n", false, "Print what would happen without writing")
 }
 

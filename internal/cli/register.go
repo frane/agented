@@ -204,9 +204,9 @@ func newListCmd(a *App) *cobra.Command {
 			return a.emit(res)
 		},
 	}
-	c.Flags().BoolVarP(&all, "all", "A", false, "Include closed files")
-	c.Flags().BoolVarP(&closed, "closed", "c", false, "Show only closed files")
-	c.Flags().BoolVarP(&stale, "stale", "s", false, "Annotate stale buffers")
+	c.Flags().BoolVar(&all, "all", false, "Include closed files")
+	c.Flags().BoolVar(&closed, "closed", false, "Show only closed files")
+	c.Flags().BoolVar(&stale, "stale", false, "Annotate stale buffers")
 	return c
 }
 
@@ -231,7 +231,7 @@ func newStatusCmd(a *App) *cobra.Command {
 			return a.emit(res)
 		},
 	}
-	c.Flags().BoolVarP(&storage, "storage", "S", false, "Include storage report")
+	c.Flags().BoolVar(&storage, "storage", false, "Include storage report")
 	return c
 }
 
@@ -285,7 +285,7 @@ func newSearchCmd(a *App) *cobra.Command {
 		},
 	}
 	c.Flags().StringVarP(&pattern, "pattern", "p", "", "Go regexp (RE2) pattern (required)")
-	c.Flags().IntVarP(&limit, "limit", "l", 0, "Max matches (default 100)")
+	c.Flags().IntVarP(&limit, "limit", "L", 0, "Max matches (default 100)")
 	return c
 }
 
@@ -309,7 +309,7 @@ func newDiffCmd(a *App) *cobra.Command {
 			return a.emit(res)
 		},
 	}
-	c.Flags().Int64VarP(&from, "from", "f", 0, "Edit ID for the from side (default parent of head)")
+	c.Flags().Int64VarP(&from, "from", "F", 0, "Edit ID for the from side (default parent of head)")
 	c.Flags().Int64VarP(&to, "to", "T", 0, "Edit ID for the to side (default head)")
 	return c
 }
@@ -333,8 +333,8 @@ func newLogCmd(a *App) *cobra.Command {
 			return a.emit(res)
 		},
 	}
-	c.Flags().IntVarP(&limit, "limit", "l", 0, "Max entries (default 50)")
-	c.Flags().StringVarP(&actor, "actor", "A", "", "Filter by actor")
+	c.Flags().IntVarP(&limit, "limit", "L", 0, "Max entries (default 50)")
+	c.Flags().StringVar(&actor, "actor", "", "Filter by actor")
 	return c
 }
 
@@ -348,9 +348,9 @@ type editFlags struct {
 func attachEditFlags(c *cobra.Command, ef *editFlags) {
 	c.Flags().StringVarP(&ef.expect, "expect", "x", "", "Expected state_token from last view/write")
 	c.Flags().StringVarP(&ef.text, "text", "t", "", "Inline text")
-	c.Flags().StringVar(&ef.textFile, "text-file", "", "Read text from this path")
-	c.Flags().BoolVar(&ef.fromStdin, "from-stdin", false, "Read text from stdin")
-	c.Flags().BoolVar(&ef.noTx, "no-transaction", false, "Bypass current transaction owner enforcement")
+	c.Flags().StringVarP(&ef.textFile, "text-file", "f", "", "Read text from this path")
+	c.Flags().BoolVarP(&ef.fromStdin, "from-stdin", "i", false, "Read text from stdin")
+	c.Flags().BoolVarP(&ef.noTx, "no-transaction", "T", false, "Bypass current transaction owner enforcement")
 	c.Flags().BoolVar(&ef.autoOpen, "auto-open", false, "Auto-open the file if not registered")
 }
 
@@ -358,9 +358,9 @@ func attachEditFlags(c *cobra.Command, ef *editFlags) {
 func attachReplaceFlags(c *cobra.Command, ef *editFlags) {
 	c.Flags().StringVarP(&ef.expect, "expect", "x", "", "Expected state_token from last view/write")
 	c.Flags().StringVarP(&ef.text, "with", "w", "", "Replacement text (alternative to --text-file/--from-stdin)")
-	c.Flags().StringVar(&ef.textFile, "text-file", "", "Read replacement from this path")
-	c.Flags().BoolVar(&ef.fromStdin, "from-stdin", false, "Read replacement from stdin")
-	c.Flags().BoolVar(&ef.noTx, "no-transaction", false, "Bypass current transaction owner enforcement")
+	c.Flags().StringVarP(&ef.textFile, "text-file", "f", "", "Read replacement from this path")
+	c.Flags().BoolVarP(&ef.fromStdin, "from-stdin", "i", false, "Read replacement from stdin")
+	c.Flags().BoolVarP(&ef.noTx, "no-transaction", "T", false, "Bypass current transaction owner enforcement")
 	c.Flags().BoolVar(&ef.autoOpen, "auto-open", false, "Auto-open the file if not registered")
 }
 
@@ -438,7 +438,7 @@ func newInsertCmd(a *App) *cobra.Command {
 			return a.emit(res)
 		},
 	}
-	c.Flags().IntVarP(&after, "after", "a", -1, "Insert after this line (0 = start)")
+	c.Flags().IntVarP(&after, "after", "A", -1, "Insert after this line (0 = start)")
 	attachEditFlags(c, ef)
 	return c
 }
@@ -504,7 +504,7 @@ func newUndoCmd(a *App) *cobra.Command {
 			return a.emit(res)
 		},
 	}
-	c.Flags().IntVar(&count, "count", 1, "Number of edits to walk back")
+	c.Flags().IntVarP(&count, "count", "c", 1, "Number of edits to walk back")
 	return c
 }
 
@@ -531,7 +531,7 @@ func newRedoCmd(a *App) *cobra.Command {
 			return a.emit(res)
 		},
 	}
-	c.Flags().IntVar(&count, "count", 1, "Number of edits to walk forward")
+	c.Flags().IntVarP(&count, "count", "c", 1, "Number of edits to walk forward")
 	return c
 }
 
@@ -571,7 +571,7 @@ func newHeadCmd(a *App) *cobra.Command {
 			return a.emit(res)
 		},
 	}
-	c.Flags().Int64Var(&editID, "edit", 0, "Target edit id (required)")
+	c.Flags().Int64VarP(&editID, "edit", "e", 0, "Target edit id (required)")
 	c.MarkFlagRequired("edit")
 	return c
 }
@@ -1015,8 +1015,8 @@ func newPruneCmd(a *App) *cobra.Command {
 	c.Flags().IntVar(&keepRecent, "keep-recent", 0, "Collapse history keeping N recent edits")
 	c.Flags().BoolVar(&orphans, "orphan-marks", false, "Remove orphan marks")
 	c.Flags().BoolVar(&vac, "vacuum", false, "VACUUM after pruning")
-	c.Flags().BoolVar(&dryRun, "dry-run", false, "Report what would be done")
-	c.Flags().BoolVar(&confirm, "confirm", false, "Confirm destructive prune")
+	c.Flags().BoolVarP(&dryRun, "dry-run", "n", false, "Report what would be done")
+	c.Flags().BoolVarP(&confirm, "confirm", "y", false, "Confirm destructive prune")
 	c.Flags().StringVar(&fileFlag, "file", "", "Limit to one file path")
 	return c
 }
@@ -1045,8 +1045,8 @@ func newPruneAuditCmd(a *App) *cobra.Command {
 		},
 	}
 	c.Flags().StringVar(&olderThan, "older-than", "", "Duration (e.g. 90d)")
-	c.Flags().BoolVar(&dryRun, "dry-run", false, "Report only")
-	c.Flags().BoolVar(&confirm, "confirm", false, "Confirm destructive deletion")
+	c.Flags().BoolVarP(&dryRun, "dry-run", "n", false, "Report only")
+	c.Flags().BoolVarP(&confirm, "confirm", "y", false, "Confirm destructive deletion")
 	c.MarkFlagRequired("older-than")
 	return c
 }
@@ -1058,8 +1058,9 @@ func newConfigCmd(a *App) *cobra.Command {
 	}
 	var showSource bool
 	show := &cobra.Command{
-		Use:   "show",
-		Short: "Print resolved configuration",
+		Use:     "show",
+		Aliases: []string{"s"},
+		Short:   "Print resolved configuration",
 		RunE: func(_ *cobra.Command, _ []string) error {
 			leaves := config.FlattenLeaves(a.cfg)
 			res := &cmd.Result{Config: &cmd.ConfigResult{
@@ -1085,7 +1086,7 @@ func newConfigCmd(a *App) *cobra.Command {
 			return a.emit(&cmd.Result{Config: &cmd.ConfigResult{Action: "set", Path: path}})
 		},
 	}
-	set.Flags().BoolVar(&globalFlag, "global", false, "Write to global config")
+	set.Flags().BoolVarP(&globalFlag, "global", "g", false, "Write to global config")
 	unset := &cobra.Command{
 		Use:   "unset <key>",
 		Short: "Remove a config override",
@@ -1098,10 +1099,11 @@ func newConfigCmd(a *App) *cobra.Command {
 			return a.emit(&cmd.Result{Config: &cmd.ConfigResult{Action: "unset", Path: path}})
 		},
 	}
-	unset.Flags().BoolVar(&globalFlag, "global", false, "Edit global config")
+	unset.Flags().BoolVarP(&globalFlag, "global", "g", false, "Edit global config")
 	validate := &cobra.Command{
-		Use:   "validate [file]",
-		Short: "Validate a config file",
+		Use:     "validate [file]",
+		Aliases: []string{"v"},
+		Short:   "Validate a config file",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
 			if len(args) == 1 {
@@ -1118,8 +1120,9 @@ func newConfigCmd(a *App) *cobra.Command {
 		},
 	}
 	editCmd := &cobra.Command{
-		Use:   "edit",
-		Short: "Open the config file in $EDITOR",
+		Use:     "edit",
+		Aliases: []string{"e"},
+		Short:   "Open the config file in $EDITOR",
 		RunE: func(_ *cobra.Command, _ []string) error {
 			path := configPathFor(a, globalFlag)
 			editor := os.Getenv("EDITOR")
@@ -1130,7 +1133,7 @@ func newConfigCmd(a *App) *cobra.Command {
 			return a.emit(&cmd.Result{Config: &cmd.ConfigResult{Action: "edit", Path: path}})
 		},
 	}
-	editCmd.Flags().BoolVar(&globalFlag, "global", false, "Edit global config")
+	editCmd.Flags().BoolVarP(&globalFlag, "global", "g", false, "Edit global config")
 	c.AddCommand(show, set, unset, validate, editCmd)
 	return c
 }

@@ -41,8 +41,9 @@ func newSkillInstallCmd(a *App) *cobra.Command {
 		dryRun bool
 	)
 	c := &cobra.Command{
-		Use:   "install",
-		Short: "Install SKILL.md to one or more skills directories",
+		Use:     "install",
+		Aliases: []string{"i"},
+		Short:   "Install SKILL.md to one or more skills directories",
 		RunE: func(_ *cobra.Command, _ []string) error {
 			if err := validateTarget(target); err != nil {
 				return wrapErrCode(1, err)
@@ -68,8 +69,9 @@ func newSkillInstallCmd(a *App) *cobra.Command {
 func newSkillListCmd(a *App) *cobra.Command {
 	var scope string
 	c := &cobra.Command{
-		Use:   "list",
-		Short: "Show install state across all known targets",
+		Use:     "list",
+		Aliases: []string{"l"},
+		Short:   "Show install state across all known targets",
 		RunE: func(_ *cobra.Command, _ []string) error {
 			workspace, _ := workspaceForScope(a, scope)
 			entries, err := skill.List(skill.ListOptions{Workspace: workspace})
@@ -90,7 +92,7 @@ func newSkillListCmd(a *App) *cobra.Command {
 			return nil
 		},
 	}
-	c.Flags().StringVar(&scope, "scope", "global", "Scope: global | project")
+	c.Flags().StringVarP(&scope, "scope", "s", "global", "Scope: global | project")
 	return c
 }
 
@@ -101,8 +103,9 @@ func newSkillUpgradeCmd(a *App) *cobra.Command {
 		dryRun bool
 	)
 	c := &cobra.Command{
-		Use:   "upgrade",
-		Short: "Re-install to every target where a previous install was detected",
+		Use:     "upgrade",
+		Aliases: []string{"up"},
+		Short:   "Re-install to every target where a previous install was detected",
 		RunE: func(_ *cobra.Command, _ []string) error {
 			if err := validateTarget(target); err != nil {
 				return wrapErrCode(1, err)
@@ -132,8 +135,9 @@ func newSkillUninstallCmd(a *App) *cobra.Command {
 		dryRun bool
 	)
 	c := &cobra.Command{
-		Use:   "uninstall",
-		Short: "Remove the agented/ folder from a skills directory",
+		Use:     "uninstall",
+		Aliases: []string{"u"},
+		Short:   "Remove the agented/ folder from a skills directory",
 		RunE: func(_ *cobra.Command, _ []string) error {
 			if err := validateTarget(target); err != nil {
 				return wrapErrCode(1, err)
@@ -178,10 +182,10 @@ func newSkillUninstallCmd(a *App) *cobra.Command {
 
 // attachSkillFlags wires the shared --target/--scope/--dry-run flags.
 func attachSkillFlags(c *cobra.Command, target, scope *string, dryRun *bool) {
-	c.Flags().StringVar(target, "target", "all",
+	c.Flags().StringVarP(target, "target", "t", "all",
 		fmt.Sprintf("Target: %s", strings.Join(validTargets, " | ")))
-	c.Flags().StringVar(scope, "scope", "global", "Scope: global | project")
-	c.Flags().BoolVar(dryRun, "dry-run", false, "Print what would happen without writing")
+	c.Flags().StringVarP(scope, "scope", "s", "global", "Scope: global | project")
+	c.Flags().BoolVarP(dryRun, "dry-run", "n", false, "Print what would happen without writing")
 }
 
 func validateTarget(t string) error {

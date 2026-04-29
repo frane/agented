@@ -1,7 +1,7 @@
 {
   "actor": "",
   "concurrency": {
-    "require_expect": "writes"
+    "require_expect": "warn"
   },
   "transactions": {
     "auto_rollback_idle_for": "10m"
