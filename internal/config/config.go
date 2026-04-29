@@ -392,16 +392,13 @@ func (c *Config) AuditRetention() time.Duration {
 	return d
 }
 
-// GlobalPath returns the OS-appropriate path to the global config file.
+// GlobalPath returns the global config file path: ~/.agented/config.json.
 func GlobalPath() string {
-	if x := os.Getenv("XDG_CONFIG_HOME"); x != "" {
-		return filepath.Join(x, "agented", "config.json")
-	}
 	home, err := os.UserHomeDir()
 	if err != nil || home == "" {
 		return ""
 	}
-	return filepath.Join(home, ".config", "agented", "config.json")
+	return filepath.Join(home, ".agented", "config.json")
 }
 
 // SetDotted writes a key in a config file, creating the file if necessary.

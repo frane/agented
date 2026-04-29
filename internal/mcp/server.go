@@ -36,7 +36,7 @@ func Serve(ctx context.Context, opts Options) error {
 		mserver.WithToolCapabilities(false),
 		mserver.WithRecovery(),
 	)
-	registerTools(srv, opts.Engine)
+	RegisterTools(srv, opts.Engine)
 
 	switch opts.Transport {
 	case "stdio", "":

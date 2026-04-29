@@ -32,7 +32,7 @@ func TestLocateWalkUp(t *testing.T) {
 
 func TestLocateFallbackGlobal(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("XDG_DATA_HOME", filepath.Join(dir, "data"))
+	t.Setenv("HOME", dir)
 	got, isProj, err := workspace.Locate(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -40,7 +40,7 @@ func TestLocateFallbackGlobal(t *testing.T) {
 	if isProj {
 		t.Error("expected non-project")
 	}
-	if want := filepath.Join(dir, "data", "agented"); got != want {
+	if want := filepath.Join(dir, ".agented"); got != want {
 		t.Errorf("got %q want %q", got, want)
 	}
 }

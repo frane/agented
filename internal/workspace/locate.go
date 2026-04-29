@@ -24,10 +24,21 @@ func Locate(start string) (path string, isProject bool, err error) {
 	if err != nil {
 		return "", false, err
 	}
+	gp := globalDir()
+	var gpInfo os.FileInfo
+	if gp != "" {
+		if fi, err := os.Stat(gp); err == nil {
+			gpInfo = fi
+		}
+	}
 	cur := abs
 	for {
 		candidate := filepath.Join(cur, Dir)
 		if fi, err := os.Stat(candidate); err == nil && fi.IsDir() {
+			// $HOME/.agented is the global workspace, not a project one.
+			if gpInfo != nil && os.SameFile(fi, gpInfo) {
+				return candidate, false, nil
+			}
 			return candidate, true, nil
 		}
 		parent := filepath.Dir(cur)
@@ -36,7 +47,6 @@ func Locate(start string) (path string, isProject bool, err error) {
 		}
 		cur = parent
 	}
-	gp := globalDir()
 	if gp == "" {
 		return "", false, errors.New("could not determine fallback global workspace path")
 	}
@@ -77,14 +87,11 @@ func EnsureDir(agentedDir string) error {
 }
 
 func globalDir() string {
-	if x := os.Getenv("XDG_DATA_HOME"); x != "" {
-		return filepath.Join(x, "agented")
-	}
 	home, err := os.UserHomeDir()
 	if err != nil || home == "" {
 		return ""
 	}
-	return filepath.Join(home, ".local", "share", "agented")
+	return filepath.Join(home, ".agented")
 }
 
 // ConfigProjectPath returns the path to the project's config file given the

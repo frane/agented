@@ -8,19 +8,48 @@ Once the user is the model, what an editor should optimise for changes. Humans c
 
 ## What it is, concretely
 
-A SQLite-backed workspace that lives in `.agented/` next to your project. The agent runs `ae open foo.go`, makes some edits, leaves a note, exits. Three days later a different agent (different process, different model, doesn't matter) runs `ae open foo.go` and gets back the file with its annotation count, the current head edit, and inline annotations from previous sessions. State outlives the process.
+A SQLite-backed workspace that lives in `.agented/` next to your project. The agent runs `ae open foo.go`, makes some edits, leaves a note, exits. Three days later a different agent (different process, different model, even a different vendor's CLI in the next terminal over) runs `ae open foo.go` and gets back the file with its annotation count, the current head edit, and inline annotations from previous sessions. State outlives the process. It also outlives the agent.
 
-The history is a tree, not a stack. Most MCP text editors I've seen expose `undo_edit` as if a file's history is a single timeline. It isn't. Agents explore: they try one refactor, decide it's wrong, walk back, try another turn. With a stack the original branch is gone. With a tree both directions are still there, addressable by id, and the agent can `ae head foo.go --edit 47` to jump back to whichever version it wants to continue from.
+Read once, edit forever. Your local picture of the file, built from the response to `ae open` and every edit you've issued since, is the source of truth between reads. The editor reports drift via full-content rejection payloads: a write with a stale `--expect` token rejects with the current file content attached, the new token, and the actor who moved it. You update your model from the rejection and retry. One round trip on conflict, no "Read before every Write" ritual, no defensive re-reads. This is the inverse of `Edit`'s contract.
 
-The other thing worth knowing about up front is the state token. Every state of a file has a deterministic 16-character fingerprint, computed from `(file_id, head_edit_id, content_hash)`. Reads return it. Writes accept `--expect <token>`. If the token is stale the write rejects with exit code 3 and includes the current content of the affected range right there in the response payload, so the agent retries with the new token. One round trip on the conflict, no separate "view first to be safe" step. That convention is what lets the skill tell the agent: just write, the editor will tell you if you're wrong.
+The history is a tree, not a stack. Most MCP text editors I've seen expose `undo_edit` as if a file's history is a single timeline. It isn't. Agents explore: they try one refactor, decide it's wrong, walk back, try another turn. With a stack the original branch is gone. With a tree both directions are still there, addressable by id, and the agent can `ae head foo.go --edit 47` to jump back to whichever version it wants to continue from. The recovery scenario shown in the session example below is the case that justifies the cost; it isn't theoretical.
+
+`ae merge` turns the tree into something agents can actually reconcile. It's a real three-way merge: walk back to the lowest common ancestor, diff each branch against it, apply non-overlapping changes automatically, and return a structured conflict response for the rest. `--resolve start:end=a|b|"text"` resolves a specific range, `--prefer a|b` auto-resolves every conflict in favor of one branch, `--abort` walks away clean.
+
+`ae apply` consumes JSON-lines on stdin and runs every operation inside one transaction. Multi-edit refactors that would be N round trips through `Edit` become one round trip through ae, all-or-nothing, with no partial-success ambiguity. The response identifies which op failed if any.
+
+`ae move` cuts a line range and inserts it elsewhere, in the same file or across files, in one transaction. `ae replace --pattern` does regex search-and-replace with capture groups in a single verb. Both are operations `Edit`'s addressing model can't express cleanly.
+
+The state token is the small primitive that makes the rest cheap. Every state of a file has a deterministic 16-character fingerprint, computed from `(file_id, head_edit_id, content_hash)`. Reads return it. Writes accept `--expect <token>`. Default is warn mode (writes without the token succeed with a stderr nudge); strict mode rejects up front. Either way, an actual conflict produces exit code 3 and the recovery payload.
+
+Annotations are the cross-session memory. Per-file notes that persist across processes, across agents, across vendors. `ae open` returns active annotations inline, so reading them is automatic. A Codex session at 4pm picks up where the Claude Code session at 11am stopped, with the annotations as the handoff.
 
 None of which makes this an editor for humans. There is no TUI, no keybindings, no vim mode, no emacs mode, no syntax highlighting. If you want to edit code with your hands you already have whatever you've been using; don't switch. It's also not a version control system or a database. The history tree is for editing-session continuity, not for replacing git. Save things to disk, commit them, push them, as usual.
+
+
+## What users say
+
+```
+Honestly, having undo as a tree instead of a stack is what I didn't realize I was missing.
+```
+
+— Claude Code
+
+<!-- TODO: verify Codex CLI rendering before launch; rendering plain for now -->
+
+```
+It just remembers what I did last time.
+```
+
+— Codex CLI
 
 ## Tokens
 
 Verbs are short on purpose. `s` is replace, `i` is insert, `d` is delete, `v` is view, `u` is undo, `r` is redo, `br` is branches, `an` is annotate. Flags follow the same logic: `-r` for range, `-w` for with, `-x` for expect, `-t` for text, `-a` for after. Output is tab-delimited and stripped to the fields the agent actually has to parse. A typical edit costs roughly a fifth the tokens of an equivalent JSON-RPC tool call. Long forms exist for the skill to teach and for humans reading logs: `ae replace foo.go --range 12:14 --with "..." --expect ab12cd34` is the same command as `ae s foo.go -r 12:14 -w "..." -x ab12cd34`.
 
 MCP doesn't get the same savings, since JSON envelopes are JSON envelopes. Use the CLI through skills if you have a shell, MCP if you don't.
+
+The other axis is round-trip economy. One read per session-start, one rejection-with-content on conflict (no separate retry-after-view), one ae apply for a multi-edit batch where Edit would be N tool calls. The token-per-call number ("a fifth of JSON-RPC") matters less than how many calls a task takes; ae compresses both. Numbers, once `make bench` lands, live in `test/benchmark/results.md`.
 
 ## Install
 
@@ -54,6 +83,17 @@ ae s foo.go -r 40:42 -w "..." -x <token> # continue forward; this creates a sibl
 
 The wrong path is still in the tree, addressable by edit_id if you ever want to look. With linear undo this scenario is "rollback the entire transaction or live with the bad version." With the tree it's a `head --edit` and a `view`.
 
+For multi-edit batches, pipe JSON-lines:
+
+```sh
+ae apply foo.go << 'OPS'
+{"verb":"replace","range":"12:14","with":"newName(\n"}
+{"verb":"replace","range":"40:40","with":"newName(\n"}
+{"verb":"insert","after":80,"text":"// see ADR-0042\n"}
+OPS
+# atomic: any failure rolls all three back; on success, one new state_token
+```
+
 
 When two agents edit the same file at once, the second write rejects with a state-token conflict (exit 3). The conflict response carries the new state token and the current content of the affected range, so the second agent can decide in one round trip: retry on the new head, or take the original token's edit and explore that branch deliberately. Either way both edits are addressable in the tree afterwards. `ae br foo.go` shows the leaves. Pruning, transaction timeouts, stale-buffer detection are all in `.agented/config.json`; the agent doesn't have to think about any of it.
 
@@ -80,12 +120,13 @@ Default `--target all` writes to every detected client; default `--scope project
 
 ## Configuration
 
-Project config in `.agented/config.json`, global config in `$XDG_CONFIG_HOME/agented/config.json`, project overrides global. JSON because the standard library parses JSON and pulling in a TOML dependency for twenty lines of config was not the hill.
+Project config in `.agented/config.json`, global config in `~/.agented/config.json`, project overrides global. JSON because the standard library parses JSON and pulling in a TOML dependency for twenty lines of config was not the hill.
+
+The four settings most people change first: `concurrency.require_expect: warn` (writes succeed without `--expect`, conflicts still rejected; switch to `writes` for strict multi-agent coordination), `concurrency.default_on_conflict: full` (rejection payloads include full file content for files under 500 lines), `transactions.auto_rollback_idle_for: 10m` (idle transactions self-clean), `auto_prune.enabled: true` (the editor manages history retention so you don't).
 
 `ae config show --source` prints the resolved configuration with the source file for each value. `ae config set <key> <value>` writes one key. `ae config edit` opens the file when you have more changes than that.
 
 Defaults are good enough that you don't need to touch any of this on day one.
-
 ## Build and tests
 
 ```sh
@@ -94,9 +135,12 @@ make test-property
 make lint
 make build
 make release
+make bench
 ```
 
 The property tests are where the real correctness work lives. The storage layer does line-splice math under compression with periodic snapshots, and marks recompute their positions across edits without rereading content. Both are the kind of code where bugs hide for years if all you have is happy-path unit tests. The property tests run random edit sequences against an in-memory oracle and catch the drift.
+
+`make bench` benchmarks `ae` against the built-in Read/Edit/Write tools across a representative set of editing scenarios and writes the results to `test/benchmark/results.md`. Token counts are reproducible across runs; latency varies. Once landed, the README quotes the headline number from there instead of from a hand-wavy estimate.
 
 ## Status
 

@@ -11,9 +11,10 @@ import (
 	"github.com/frane/agented/internal/cmd"
 )
 
-// registerTools wires every CLI verb to an MCP tool. Tool names use the
-// `ae_<verb>` convention.
-func registerTools(s *mserver.MCPServer, e *cmd.Engine) {
+// RegisterTools wires every CLI verb to an MCP tool. Tool names use the
+// `ae_<verb>` convention. Exported for in-process tests; mcp.Serve calls it
+// internally via registerTools (alias kept for backwards-compatible private use).
+func RegisterTools(s *mserver.MCPServer, e *cmd.Engine) {
 	pathArg := mcpgo.WithString("path", mcpgo.Description("File path"), mcpgo.Required())
 
 	// open
