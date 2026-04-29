@@ -235,3 +235,80 @@ func TestStatusDiffDisk(t *testing.T) {
 
 // silence unused if any helper is exported only via existing tests.
 var _ = store.HashContent
+
+func TestMoveAutoCreatesDestination(t *testing.T) {
+	e, dir := newEngine(t)
+	src := writeFile(t, dir, "src.txt", "alpha\nbeta\ngamma\n")
+	if _, err := e.Open(cmd.OpenInput{Path: src}); err != nil {
+		t.Fatal(err)
+	}
+	dst := dir + "/dst.txt"
+	// dst.txt does NOT exist on disk yet.
+	res, err := e.Move(cmd.MoveInput{
+		Path:      src,
+		FromStart: 2,
+		FromEnd:   2,
+		ToFile:    dst,
+		ToLine:    0,
+		AutoOpen:  true,
+	})
+	if err != nil {
+		t.Fatalf("move: %v", err)
+	}
+	if res == nil {
+		t.Fatal("nil result")
+	}
+	// Destination must now be open.
+	dstFI, err := e.Store.FileByPath(dst, true)
+	if err != nil {
+		t.Fatalf("dst not registered: %v", err)
+	}
+	if dstFI.LineCount != 1 {
+		t.Errorf("dst line_count = %d, want 1 (one moved line)", dstFI.LineCount)
+	}
+	// Source must have lost line 2.
+	srcFI, _ := e.Store.FileByPath(src, true)
+	if srcFI.LineCount != 2 {
+		t.Errorf("src line_count = %d, want 2", srcFI.LineCount)
+	}
+	_ = store.ErrFileNotFound
+}
+
+func TestExtractAutoCreatesAndAppends(t *testing.T) {
+	e, dir := newEngine(t)
+	src := writeFile(t, dir, "src.go", "alpha\nbeta\ngamma\ndelta\n")
+	if _, err := e.Open(cmd.OpenInput{Path: src}); err != nil {
+		t.Fatal(err)
+	}
+	dst := dir + "/dst.go"
+	res, err := e.Extract(cmd.ExtractInput{
+		Path:      src,
+		FromStart: 2,
+		FromEnd:   3,
+		ToFile:    dst,
+		Save:      true,
+	})
+	if err != nil {
+		t.Fatalf("extract: %v", err)
+	}
+	if res.Extract == nil {
+		t.Fatal("Extract result missing")
+	}
+	if res.Extract.LinesMoved != 2 {
+		t.Errorf("LinesMoved = %d, want 2", res.Extract.LinesMoved)
+	}
+	if !res.Extract.SrcSaved || !res.Extract.DstSaved {
+		t.Errorf("expected both files saved, got src=%t dst=%t", res.Extract.SrcSaved, res.Extract.DstSaved)
+	}
+	srcFI, _ := e.Store.FileByPath(src, true)
+	if srcFI.LineCount != 2 {
+		t.Errorf("src line_count = %d, want 2", srcFI.LineCount)
+	}
+	dstFI, err := e.Store.FileByPath(dst, true)
+	if err != nil {
+		t.Fatalf("dst not registered: %v", err)
+	}
+	if dstFI.LineCount != 2 {
+		t.Errorf("dst line_count = %d, want 2", dstFI.LineCount)
+	}
+}

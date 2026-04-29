@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -124,7 +125,8 @@ type StatusInput struct {
 
 // Status returns workspace or file status.
 func (e *Engine) Status(in StatusInput) (*Result, error) {
-	res := &Result{Status: &StatusResult{CurrentActor: e.Actor}}
+	cwd, _ := os.Getwd()
+	res := &Result{Status: &StatusResult{CurrentActor: e.Actor, Cwd: cwd, WorkspaceDir: workspaceDirOf(e.DBPath)}}
 	tx, err := e.Store.CurrentTransaction("")
 	if err == nil {
 		res.Status.OpenTx = tx
@@ -279,4 +281,13 @@ func sortRowsByPath(rows []WorkspaceFileRow) {
 			rows[j-1], rows[j] = rows[j], rows[j-1]
 		}
 	}
+}
+
+// workspaceDirOf returns the .agented directory containing dbPath, or empty
+// if dbPath is empty (init/version run before workspace resolution).
+func workspaceDirOf(dbPath string) string {
+	if dbPath == "" {
+		return ""
+	}
+	return filepath.Dir(dbPath)
 }

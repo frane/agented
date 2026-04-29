@@ -11,8 +11,9 @@ import (
 // ViewInput is the input to view.
 type ViewInput struct {
 	Path  string
-	Start int // 0 means from beginning
-	End   int // 0 means to end
+	Start int  // 0 means from beginning
+	End   int  // 0 means to end
+	Raw   bool // when true, output is raw bytes; no line-number prefix or trailer
 }
 
 // View returns the file's lines (optionally a range).
@@ -43,6 +44,10 @@ func (e *Engine) View(in ViewInput) (*Result, error) {
 	out := make([]string, 0, end-start+1)
 	for i := start; i <= end; i++ {
 		line := parts[i-1]
+		if in.Raw {
+			out = append(out, line)
+			continue
+		}
 		// Strip trailing newline for display; the index already implies the line break.
 		if l := len(line); l > 0 && line[l-1] == '\n' {
 			line = line[:l-1]
@@ -52,7 +57,7 @@ func (e *Engine) View(in ViewInput) (*Result, error) {
 	return &Result{
 		FileID:     &fi.ID,
 		StateToken: store.ComputeStateToken(fi.ID, fi.HeadEditID, fi.ContentHash),
-		View: &ViewResult{Lines: out, Start: start, End: end},
+		View: &ViewResult{Lines: out, Start: start, End: end, Raw: in.Raw},
 	}, nil
 }
 

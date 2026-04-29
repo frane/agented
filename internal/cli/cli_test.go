@@ -271,3 +271,24 @@ func extractStateToken(out string) string {
 	}
 	return ""
 }
+
+func TestCLIViewRawIsByteEqualToDisk(t *testing.T) {
+	dir := t.TempDir()
+	runAE(t, dir, "init")
+	p := filepath.Join(dir, "a.txt")
+	body := []byte("alpha\nbeta\ngamma\n")
+	if err := os.WriteFile(p, body, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runAE(t, dir, "open", "a.txt")
+	code, out, errOut := runAE(t, dir, "view", "a.txt", "--raw")
+	if code != 0 {
+		t.Fatalf("view --raw: %d\n%s", code, errOut)
+	}
+	if out != string(body) {
+		t.Errorf("--raw output != on-disk content:\ngot  %q\nwant %q", out, body)
+	}
+	if strings.Contains(out, "state_token") {
+		t.Errorf("--raw output should not include state_token: %q", out)
+	}
+}

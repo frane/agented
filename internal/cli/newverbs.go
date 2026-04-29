@@ -178,3 +178,53 @@ func parseResolveSpec(s string) (cmd.ResolveSpec, error) {
 	}
 	return out, nil
 }
+
+// newExtractCmd wires `ae extract`.
+func newExtractCmd(a *App) *cobra.Command {
+	var (
+		rangeStr string
+		toFile   string
+		toLine   int
+		save     bool
+		expect   string
+	)
+	c := &cobra.Command{
+		Use:     "extract <path>",
+		Aliases: []string{"e"},
+		Short:   "Cut a line range out of one file and write it to another (auto-creates dst)",
+		Args:    cobra.ExactArgs(1),
+		RunE: func(_ *cobra.Command, args []string) error {
+			if rangeStr == "" {
+				return wrapErrCode(1, errors.New("--range is required"))
+			}
+			if toFile == "" {
+				return wrapErrCode(1, errors.New("--to is required"))
+			}
+			s, e, err := parseRange(rangeStr)
+			if err != nil {
+				return wrapErrCode(1, err)
+			}
+			res, err := a.engine.Extract(cmd.ExtractInput{
+				Path:      args[0],
+				FromStart: s,
+				FromEnd:   e,
+				ToFile:    toFile,
+				ToLine:    toLine,
+				Save:      save,
+				Expect:    expect,
+			})
+			if err != nil {
+				a.auditErr("extract", map[string]any{"path": args[0], "range": rangeStr, "to": toFile}, err.Error(), nil, nil)
+				return wrapErr(err)
+			}
+			a.auditOK("extract", map[string]any{"path": args[0], "range": rangeStr, "to": toFile}, res.FileID, res.EditID)
+			return a.emit(res)
+		},
+	}
+	c.Flags().StringVarP(&rangeStr, "range", "r", "", "Source line range (e.g. 100:200)")
+	c.Flags().StringVar(&toFile, "to", "", "Destination file (auto-created if absent)")
+	c.Flags().IntVar(&toLine, "to-line", 0, "Insert after this line in the destination (0 = append to end)")
+	c.Flags().BoolVarP(&save, "save", "S", false, "Save both files to disk after the extraction")
+	c.Flags().StringVarP(&expect, "expect", "x", "", "Expected source state_token")
+	return c
+}

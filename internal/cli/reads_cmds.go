@@ -36,7 +36,10 @@ func newFindCmd(a *App) *cobra.Command {
 }
 
 func newViewCmd(a *App) *cobra.Command {
-	var rangeStr string
+	var (
+		rangeStr string
+		raw      bool
+	)
 	c := &cobra.Command{
 		Use:     "view <path>",
 		Aliases: []string{"v"},
@@ -51,16 +54,17 @@ func newViewCmd(a *App) *cobra.Command {
 				}
 				start, end = s, e
 			}
-			res, err := a.engine.View(cmd.ViewInput{Path: args[0], Start: start, End: end})
+			res, err := a.engine.View(cmd.ViewInput{Path: args[0], Start: start, End: end, Raw: raw})
 			if err != nil {
-				a.auditErr("view", map[string]any{"path": args[0], "range": rangeStr}, err.Error(), nil, nil)
+				a.auditErr("view", map[string]any{"path": args[0], "range": rangeStr, "raw": raw}, err.Error(), nil, nil)
 				return wrapErr(err)
 			}
-			a.auditOK("view", map[string]any{"path": args[0], "range": rangeStr}, res.FileID, nil)
+			a.auditOK("view", map[string]any{"path": args[0], "range": rangeStr, "raw": raw}, res.FileID, nil)
 			return a.emit(res)
 		},
 	}
 	c.Flags().StringVarP(&rangeStr, "range", "r", "", "Inclusive line range (e.g. 10:20)")
+	c.Flags().BoolVarP(&raw, "raw", "R", false, "Emit content verbatim (no line-number prefix or state_token trailer)")
 	return c
 }
 

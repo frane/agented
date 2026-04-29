@@ -57,6 +57,7 @@ type Result struct {
 	Apply    *ApplyResult
 	Merge    *MergeResult
 	Find     *FindResult
+	Extract  *ExtractResult
 }
 
 // OpenResult is returned by the open verb.
@@ -80,21 +81,28 @@ type StatusResult struct {
 	CurrentActor  string
 	OpenTx        *store.Transaction
 
-	File          *store.FileInfo
-	Dirty         bool
-	DiskDiff      string
-	BranchCount   int
-	MarkCount     int
+	// Cwd is the resolved current working directory at status time.
+	// WorkspaceDir is the .agented directory ae is using. Both surface in
+	// `ae status -W` so the agent can see where ae is resolving paths.
+	Cwd          string
+	WorkspaceDir string
+
+	File           *store.FileInfo
+	Dirty          bool
+	DiskDiff       string
+	BranchCount    int
+	MarkCount      int
 	AnnotationCount int
-	StorageReport *store.StorageReport
+	StorageReport  *store.StorageReport
 	WorkspaceFiles []WorkspaceFileRow
 }
 
 // ViewResult is a file view.
 type ViewResult struct {
-	Lines     []string // each entry: "<line_num>\t<content>" (no trailing newline)
-	Start     int
-	End       int
+	Lines []string // each entry: "<line_num>\t<content>" (no trailing newline) unless Raw
+	Start int
+	End   int
+	Raw   bool // when true, Lines hold raw bytes including trailing newlines
 }
 
 // SearchResult is regex search output.
