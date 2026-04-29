@@ -54,6 +54,8 @@ type Result struct {
 	Version  *VersionResult
 	Config   *ConfigResult
 	Prune    *PruneResult
+	Apply    *ApplyResult
+	Merge    *MergeResult
 }
 
 // OpenResult is returned by the open verb.

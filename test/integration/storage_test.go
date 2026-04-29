@@ -226,9 +226,6 @@ func TestScenario37_CacheInvalidation(t *testing.T) {
 // 38. Performance ceiling: 10,000 edits reconstruct quickly.
 // =====================================================================
 func TestScenario38_ReconstructPerformance(t *testing.T) {
-	if testing.Short() {
-		t.Skip("performance test skipped in -short")
-	}
 	s := newSession(t)
 	s.writeFile("a.txt", "1\n")
 	o := s.runOK("open", "a.txt")

@@ -33,6 +33,21 @@ The default is `concurrency.require_expect: warn`: writes without `--expect` suc
 
 **For multi-line content, pipe via `-i` (--from-stdin) or use `-f <path>` (--text-file).** Stdin is auto-detected when piped, so `cat patch.txt | ae s foo.go -r 12:14 -i` and `echo "..." | ae i foo.go -A 0 -i` work without quoting tricks.
 
+## What this editor does that Read/Edit/Write can't
+
+These are the operations that motivate reaching for `ae` over the built-ins.
+
+- **Read once, edit forever.** Your local model of the file (built from the `ae open` response and every subsequent edit) is the source of truth. The editor reports drift via full-content rejection payloads, not via "Read before every Write" rituals. Verb: `ae open <path>`, then any number of writes without re-reading.
+- **Branching tree, not stack.** Walking back is `ae undo`; jumping to any prior state is `ae head -e <edit_id>`. Both branches stay addressable; the wrong path is never lost. Verb: `ae br <path>` to list leaves, `ae head <path> -e <id>` to jump.
+- **Three-way merge.** Reconcile two diverged branches with structured conflict responses. Auto-resolve via `--prefer a|b`; resolve specific ranges via `--resolve start:end=a|b|"text"`. Verb: `ae merge <path> -l <leafA> -l <leafB>`.
+- **Atomic batches.** `ae apply` consumes JSON-lines on stdin and applies every operation inside one transaction. Replaces N Edit calls with one. Verb: `cat ops.jsonl | ae apply <path>`.
+- **Atomic move.** `ae move` cuts a range and inserts it elsewhere — same file or cross-file — in one transaction. No partial-success risk. Verb: `ae move <path> --from S:E --to N` (same-file) or `--to-file <other> --to-line N` (cross-file).
+- **Regex replace with capture groups.** `ae replace --pattern` does sed-style replacement in a single tool call. Verb: `ae s <path> -p '<re>' -w '<expansion>' [-L <max>] [-n]`.
+- **Range-based addressing.** Every write targets a line range or insertion point, not a string. Edit's "string appears multiple times" failure mode doesn't exist here. Verb: any of `ae s/i/d` with `-r S:E`.
+- **Annotations as cross-session memory.** Per-file notes that persist across processes and across agents. Verb: `ae an <path> a -t "..."` to write; reading is automatic on `ae open`.
+- **Transactions with auto-rollback.** `ae begin` opens a logical group; `ae commit` finalizes; `ae rollback` reverts. Forgotten transactions auto-rollback after the configured idle window. Verb: `ae begin / ae commit / ae rollback`.
+- **Cross-agent shared state.** A Claude Code session and a Codex session both reading the same `.agented/state.db` see the same head, branches, annotations, and marks. The workspace is the durable thing; the agent identity is incidental.
+
 ## Reading verbs (idempotent, cheap)
 
 | Verb     | Short | Args                          | Output (tab) suffix       | Use when                              |
@@ -176,6 +191,29 @@ ae replace foo.go --range 47:47 --with "..." --expect T2   # state_token=T3
 
 ### 6) Multi-file refactor with rollback (see transactions section).
 
+### 7) Atomic batch via `ae apply`
+
+```
+cat <<'OPS' | ae apply auth.go
+{"verb":"replace","range":"12:12","with":"newName(\n"}
+{"verb":"replace","range":"40:40","with":"newName(\n"}
+{"verb":"insert","after":80,"text":"// see ADR-0042\n"}
+OPS
+# all-or-nothing; on any failure the response identifies the failing op
+# and the head is unchanged.
+```
+
+### 8) Three-way merge with one resolved conflict
+
+```
+ae br auth.go
+# leaves: 47 (refactor branch), 52 (bug-fix branch), head=52
+ae merge auth.go -l 47 -l 52
+# conflict response shows ranges modified by both branches
+ae merge auth.go -l 47 -l 52 -R '20:22=a' -R '47:47=b'
+# all conflicts resolved => commit a merge edit; head moves to the new id
+```
+
 ## Errors and recovery
 
 | Error substring          | What it means                                        | Next action                                           |
@@ -198,6 +236,7 @@ ae replace foo.go --range 47:47 --with "..." --expect T2   # state_token=T3
 - Useless annotations ("this is a function").
 - Unescaped regex special characters in `search` patterns.
 - Skipping the annotations on `ae open`. They were left for you on purpose; reading them is free.
+- Using Read/Edit/Write on a file ae already manages. They bypass the tree, the annotations, and the conflict detection; the agents that share this workspace will see drift they cannot recover from.
 
 ## Output format reference
 
