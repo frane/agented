@@ -2,6 +2,27 @@
 
 All notable changes to agented are documented here. The format is based on [Keep a Changelog](https://keepachangelog.com), and the project follows [Semantic Versioning](https://semver.org).
 
+## [v0.2.2] - 2026-04-29
+
+### Features
+
+- **Auto-open in read verbs.** `ae search`, `ae view`, `ae find`, `ae diff`, `ae log`, `ae branches` and friends register the file in the workspace if it is not already open. Mirrors the auto-open already done by write verbs, so the canonical first-touch loop drops from `ae open + ae search` to just `ae search`.
+- **Slice-syntax `--range`.** Negative indices and open ends now work everywhere `--range` is accepted: `1:10` first 10, `-10:` last 10, `5:-5` middle slice, `:20` shorthand for first 20, `-50:-20` lines 50-from-end through 20-from-end. Eliminates the need for `| head -N` / `| tail -N` after ae output.
+
+### Documentation
+
+- SKILL.md gained a "Round-trip economy" section: don't `view` before `replace`, don't `view` before `search`, don't `load` before reading, don't `status` just to refetch a state token, don't `open` more than once per file per session, don't pipe ae output through `head`/`tail`/`grep`, don't append `2>&1`. The canonical loop is `open → search/find → replace/insert/delete → repeat`.
+
+### Infrastructure
+
+- `release.yml` workflow pinned to `goreleaser: latest` and `mode: keep-existing` to avoid the asset-upload retry race that produced spurious "already_exists" errors on v0.2.1 (the artifacts uploaded successfully despite the workflow exit code).
+
+## [v0.2.1] - 2026-04-29
+
+### Features
+
+- This release was tagged before some of the v0.2.2 work landed; in practice v0.2.1 contains an early version of `auto_load_on_drift` plus the same SKILL.md round-trip economy section. v0.2.2 adds slice-syntax ranges and the goreleaser fix.
+
 ## [v0.2.0] - 2026-04-29
 
 ### Features
