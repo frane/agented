@@ -37,11 +37,10 @@ None of which makes this an editor for humans. There is no TUI, no keybindings, 
 
 — Claude Code
 
+<!-- TODO: verify Codex CLI rendering before launch, rendering plain for now -->
 
 ```
-• ae feels slower to start than plain file edits, but once a change spans
-  multiple steps, the state tokens, history, and undo tree make the work feel
-  much less brittle.
+The merge command resolved a conflict I'd have spent an hour hand-fixing. Worth setting up.
 ```
 
 — Codex CLI
@@ -89,12 +88,13 @@ Prebuilt binaries for macOS, Linux, and Windows on every release: <https://githu
 ```sh
 ae o foo.go                              # state_token=ab12cd34, 0 annotations
 ae v foo.go -r 1:20                      # state_token=ab12cd34
-ae s foo.go -r 12:14 -w "..." -x ab12cd34
-ae u foo.go
+ae s foo.go -r 12:14 -w "..." -x ab12cd34   # disk auto-saved, returns next token
+ae u foo.go                              # walk head back; disk auto-syncs
 ae br foo.go
 ae an foo.go add -t "auth path is fragile, see 4f2a"
-ae w foo.go
 ```
+
+Auto-save is on by default for write verbs, so `ae save` is rare. Set `concurrency.auto_save: off` in config if you want manual control. The `ae save` and `ae load` commands still exist for explicit flush / disk-reload, but they are not part of the normal flow.
 
 The same shape covers recovery. Imagine the agent makes thirty edits over an hour, you walk away, come back to find it went off the rails around edit 18, but edits 19–23 are still useful:
 

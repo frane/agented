@@ -78,17 +78,19 @@ func newSkillListCmd(a *App) *cobra.Command {
 			if err != nil {
 				return wrapErr(err)
 			}
-			fmt.Fprintln(a.Stdout, "target\tdetected\tinstalled\tversion\tpath")
+			tw := newTabWriter(a.Stdout)
+			fmt.Fprintln(tw, "target\tdetected\tinstalled\tversion\tpath")
 			for _, e := range entries {
 				inst := "no"
-				ver := "-"
+				ver := "—"
 				if e.Installed {
 					inst = "yes"
 					ver = e.Version
 				}
-				fmt.Fprintf(a.Stdout, "%s\t%s\t%s\t%s\t%s\n",
+				fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n",
 					e.Target, e.Detected, inst, ver, displayPath(e.Path))
 			}
+			tw.Flush()
 			return nil
 		},
 	}
@@ -250,14 +252,14 @@ func buildInstallOpts(a *App, target, scope string, dryRun bool) (skill.InstallO
 // to the right exit code (1 user-error already returned earlier; 2 if any
 // target errored; otherwise 0).
 func finishSkillRun(w io.Writer, results []skill.Result, dryRun bool) error {
-	fmt.Fprintln(w, "target\tstatus\tpath")
+	fmt.Fprintln(w, "target\tstatus\tdetail")
 	var anyOK, anyErr bool
 	for _, r := range results {
-		path := displayPath(r.Path)
+		detail := displayPath(r.Path)
 		if r.Reason != "" && (r.Status == skill.StatusSkipped || r.Status == skill.StatusError) {
-			path = r.Reason
+			detail = r.Reason
 		}
-		fmt.Fprintf(w, "%s\t%s\t%s\n", r.Target, r.Status, path)
+		fmt.Fprintf(w, "%s\t%s\t%s\n", r.Target, r.Status, detail)
 		switch r.Status {
 		case skill.StatusInstalled, skill.StatusUpdated, skill.StatusUnchanged,
 			skill.StatusWouldInstall, skill.StatusWouldUpdate:

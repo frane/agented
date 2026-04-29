@@ -9,6 +9,11 @@ func Validate(c *Config) error {
 	default:
 		return fmt.Errorf("concurrency.require_expect: invalid %q", c.Concurrency.RequireExpect)
 	}
+	switch c.Concurrency.AutoSave {
+	case "", "clean", "off", "force":
+	default:
+		return fmt.Errorf("concurrency.auto_save: invalid %q (want clean|off|force)", c.Concurrency.AutoSave)
+	}
 	switch c.AutoPrune.Schedule {
 	case "daily", "hourly", "off":
 	default:

@@ -88,6 +88,10 @@ These are the operations that motivate reaching for `ae` over the built-ins.
 
 Every successful write prints `edit_id=<n>\thead_edit_id=<n>\tline_delta=<d>\tline_count=<n>\tstate_token=<hex>`. Use the new token for the next write.
 
+**Auto-save is on by default.** `ae replace` / `insert` / `delete` / `move` / `extract` write the new head to disk atomically as part of the same call, so a separate `ae save` is rarely needed. The result struct includes `saved: true` to confirm. Set `concurrency.auto_save: off` in config if you want manual control.
+
+`ae save <path>` and `ae load <path>` still exist for granular control: `save` flushes head when auto-save was off, `load` pulls disk content into the workspace as a new edit (useful when an external editor diverged the file). Neither belongs in the normal write flow.
+
 ## History verbs
 
 - `ae undo <path> [--count N]` — walk head pointer back N edits. Errors with branch info if ambiguous.
