@@ -39,6 +39,7 @@ var Targets = []Target{
 	claudeTarget,
 	codexTarget,
 	cursorTarget,
+	openclawTarget,
 }
 
 // FindTarget returns the Target with the given name, or nil if unknown.
@@ -137,6 +138,29 @@ var cursorTarget = Target{
 			return true, ""
 		}
 		if _, err := exec.LookPath("cursor"); err == nil {
+			return true, ""
+		}
+		return false, "no install detected"
+	},
+}
+
+// openclawTarget — OpenClaw personal AI assistant. Skills live under
+// ~/.openclaw/workspace/skills/<name>/. User-scoped only (no project path).
+var openclawTarget = Target{
+	Name: "openclaw",
+	GlobalPath: func() (string, error) {
+		home, err := os.UserHomeDir()
+		if err != nil || home == "" {
+			return "", fmt.Errorf("openclaw: no home directory")
+		}
+		return filepath.Join(home, ".openclaw", "workspace", "skills", "agented", "SKILL.md"), nil
+	},
+	ProjectPath: nil,
+	Detect: func() (bool, string) {
+		if dir := homeSubdir(".openclaw"); dir != "" && pathIsDir(dir) {
+			return true, ""
+		}
+		if _, err := exec.LookPath("openclaw"); err == nil {
 			return true, ""
 		}
 		return false, "no install detected"

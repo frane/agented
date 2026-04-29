@@ -6,3 +6,5 @@
 *.db-shm
 .DS_Store
 /test/property/testdata/
+/test/benchmark/builtin_vs_ae_analysis.md
+*.agented-backup-*

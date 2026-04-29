@@ -206,13 +206,49 @@ ae replace foo.go --range 47:47 --with "..." --expect T2   # state_token=T3
 
 ```
 cat <<'OPS' | ae apply auth.go
-{"verb":"replace","range":"12:12","with":"newName(\n"}
-{"verb":"replace","range":"40:40","with":"newName(\n"}
-{"verb":"insert","after":80,"text":"// see ADR-0042\n"}
+s 12:12 newName(\n
+s 40:40 newName(\n
+i 80 // see ADR-0042\n
 OPS
 # all-or-nothing; on any failure the response identifies the failing op
 # and the head is unchanged.
 ```
+
+### `ae apply` input formats
+
+`ae apply` reads operations from stdin in any of three formats. The format is detected automatically; no flag is needed.
+
+**Shortform.** What you reach for when writing batches yourself.
+
+```
+s 12:14 new content
+i 80 header line
+d 67:69
+m foo 50
+```
+
+**Longform.** Same density, fuller names. Use when the batch will be reviewed.
+
+```
+replace range=12:14 with=new content
+insert after=80 text=header line
+delete range=67:69
+mark name=foo line=50
+```
+
+**JSON-lines.** Use when piping from another tool, especially `ae find --json`.
+
+```
+{"verb":"replace","range":"12:14","with":"new content"}
+{"verb":"insert","after":80,"text":"header line"}
+{"verb":"delete","range":"67:69"}
+```
+
+The decision rule: shortform when typing it yourself and you want the token economy, longform when the batch goes anywhere a human will read it, JSON-lines when piping from a tool that produces structured output.
+
+Cross-file batches: shortform and longform use `@<file>` lines as separators. JSON-lines uses a `"file"` field per line.
+
+State tokens: shortform appends `! <token>` at end of line, longform uses `expect=<token>`, JSON-lines uses an `"expect"` field.
 
 ### 8) Three-way merge with one resolved conflict
 
@@ -241,6 +277,7 @@ ae merge auth.go -l 47 -l 52 -R '20:22=a' -R '47:47=b'
 
 ## Anti-patterns
 
+- **Reaching for `Read`/`Edit`/`Write` because they're familiar.** When editing a file you'll edit more than once, ae is the right verb. Defaulting to the built-ins is path-of-least-resistance, not a technical case. The exceptions are bootstrap (the project doesn't build, ae can't be invoked) and one-shot inspection of files outside any project (`~/.zshrc`, configuration files in `/etc/`). Everywhere else, ae.
 - Discarding `state_token` between calls (forces unnecessary conflicts on every write).
 - Ignoring the conflict response payload (the new content is right there; use it instead of running `view` again).
 - Calling `redo` after intentionally creating a new branch — `redo` will fail with branch ambiguity. Use `head --edit <id>` instead.

@@ -40,5 +40,8 @@
   "logging": {
     "level": "info",
     "destination": "stderr"
+  },
+  "workspace": {
+    "auto_create": "root-only"
   }
 }

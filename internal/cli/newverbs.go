@@ -14,8 +14,10 @@ import (
 // newApplyCmd wires `ae apply`.
 func newApplyCmd(a *App) *cobra.Command {
 	var (
-		path string
-		file string
+		path            string
+		file            string
+		multiFile       bool
+		expectWorkspace string
 	)
 	c := &cobra.Command{
 		Use:     "apply [path]",
@@ -27,19 +29,23 @@ func newApplyCmd(a *App) *cobra.Command {
 				path = args[0]
 			}
 			res, err := a.engine.Apply(cmd.ApplyInput{
-				Path:  path,
-				File:  file,
-				Stdin: a.Stdin,
+				Path:            path,
+				File:            file,
+				Stdin:           a.Stdin,
+				MultiFile:       multiFile,
+				ExpectWorkspace: expectWorkspace,
 			})
 			if err != nil {
-				a.auditErr("apply", map[string]any{"path": path, "file": file}, err.Error(), nil, nil)
+				a.auditErr("apply", map[string]any{"path": path, "file": file, "multi_file": multiFile}, err.Error(), nil, nil)
 				return wrapErr(err)
 			}
-			a.auditOK("apply", map[string]any{"path": path, "file": file}, res.FileID, nil)
+			a.auditOK("apply", map[string]any{"path": path, "file": file, "multi_file": multiFile}, res.FileID, nil)
 			return a.emit(res)
 		},
 	}
 	c.Flags().StringVarP(&file, "file", "f", "", "Read JSON-lines batch from this path (else stdin)")
+	c.Flags().BoolVarP(&multiFile, "multi-file", "M", false, "Allow operations to target multiple files via per-op `path` field")
+	c.Flags().StringVarP(&expectWorkspace, "expect-workspace", "X", "", "Expected workspace_state_token (cross-file safety)")
 	return c
 }
 

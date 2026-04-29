@@ -3,6 +3,8 @@ package cmd
 import (
 	"fmt"
 	"path/filepath"
+	"strings"
+	"time"
 
 	"github.com/frane/agented/internal/diff"
 	"github.com/frane/agented/internal/store"
@@ -113,9 +115,11 @@ func (e *Engine) List(in ListInput) (*Result, error) {
 
 // StatusInput is the input to status.
 type StatusInput struct {
-	Path     string
-	Storage  bool
-	DiffDisk bool
+	Path           string
+	Storage        bool
+	DiffDisk       bool
+	Workspace      bool // -W: full per-file table for the entire workspace
+	IncludeClosed  bool // -c: include closed files in the workspace listing
 }
 
 // Status returns workspace or file status.
@@ -127,11 +131,23 @@ func (e *Engine) Status(in StatusInput) (*Result, error) {
 	}
 	if in.Path == "" {
 		res.Status.WorkspaceMode = true
-		fs, err := e.Store.ListFiles("open")
+		mode := "open"
+		if in.IncludeClosed {
+			mode = "all"
+		}
+		fs, err := e.Store.ListFiles(mode)
 		if err != nil {
 			return nil, err
 		}
 		res.Status.OpenFileCount = len(fs)
+		if in.Workspace {
+			rows, token, err := e.workspaceTable(fs)
+			if err != nil {
+				return nil, err
+			}
+			res.Status.WorkspaceFiles = rows
+			res.StateToken = token
+		}
 		if in.Storage {
 			rep, err := e.Store.Storage(e.DBPath, e.Config.BufferIdle(), e.Config.BranchIdle())
 			if err != nil {
@@ -183,4 +199,84 @@ func readFile(p string) ([]byte, error) {
 		return nil, fmt.Errorf("file does not exist on disk: %s", p)
 	}
 	return osReadFileImpl(p)
+}
+
+// WorkspaceFileRow is one row of the per-file workspace table.
+type WorkspaceFileRow struct {
+	Path          string
+	HeadEditID    int64
+	Annotations   int
+	Branches      int
+	Dirty         bool
+	TransactionID *int64
+	LastActor     string
+	LastModified  time.Time
+	Closed        bool
+	StateToken    string
+}
+
+// workspaceTable builds the per-file rows and computes the workspace token.
+func (e *Engine) workspaceTable(files []store.FileInfo) ([]WorkspaceFileRow, string, error) {
+	rows := make([]WorkspaceFileRow, 0, len(files))
+	for _, f := range files {
+		row := WorkspaceFileRow{
+			Path:        f.Path,
+			HeadEditID:  f.HeadEditID,
+			Annotations: f.AnnotationCount,
+			Closed:      !f.IsOpen(),
+			StateToken:  store.ComputeStateToken(f.ID, f.HeadEditID, f.ContentHash),
+		}
+		// Branch count.
+		leaves, _, err := e.Store.Branches(f.ID)
+		if err == nil {
+			row.Branches = len(leaves)
+		}
+		// Last edit (actor + timestamp).
+		ed, err := e.Store.EditByID(f.HeadEditID, false)
+		if err == nil {
+			row.LastActor = ed.Actor
+			row.LastModified = ed.CreatedAt
+			if ed.TransactionID != nil {
+				v := *ed.TransactionID
+				row.TransactionID = &v
+			}
+		}
+		// Dirty: head differs from on-disk content.
+		if data, err := readFile(f.Path); err == nil {
+			row.Dirty = store.HashContent(string(data)) != f.ContentHash
+		}
+		rows = append(rows, row)
+	}
+	// Workspace state token: deterministic over the per-file tokens.
+	token := computeWorkspaceToken(rows)
+	return rows, token, nil
+}
+
+// computeWorkspaceToken hashes the per-file state tokens (sorted by path)
+// into a workspace-level fingerprint. Returns a 16-char hex prefix.
+func computeWorkspaceToken(rows []WorkspaceFileRow) string {
+	if len(rows) == 0 {
+		return store.ComputeStateToken(0, 0, "empty-workspace")
+	}
+	sorted := make([]WorkspaceFileRow, len(rows))
+	copy(sorted, rows)
+	sortRowsByPath(sorted)
+	var sb strings.Builder
+	sb.WriteString("agented:ws:v1:")
+	for _, r := range sorted {
+		sb.WriteString(r.Path)
+		sb.WriteByte(':')
+		sb.WriteString(r.StateToken)
+		sb.WriteByte(';')
+	}
+	return store.ComputeStateToken(0, 0, sb.String())
+}
+
+// sortRowsByPath sorts a workspace-row slice in place by Path, ascending.
+func sortRowsByPath(rows []WorkspaceFileRow) {
+	for i := 1; i < len(rows); i++ {
+		for j := i; j > 0 && rows[j-1].Path > rows[j].Path; j-- {
+			rows[j-1], rows[j] = rows[j], rows[j-1]
+		}
+	}
 }

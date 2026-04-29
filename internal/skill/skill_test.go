@@ -284,3 +284,55 @@ func TestCompare(t *testing.T) {
 		}
 	}
 }
+
+func TestOpenClawTargetPresent(t *testing.T) {
+	got := skill.FindTarget("openclaw")
+	if got == nil {
+		t.Fatal("openclaw target missing from skill.Targets")
+	}
+	if got.GlobalPath == nil {
+		t.Error("openclaw should have a GlobalPath")
+	}
+	if got.ProjectPath != nil {
+		t.Error("openclaw is user-scoped; ProjectPath should be nil")
+	}
+	p, err := got.GlobalPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "/.openclaw/workspace/skills/agented/SKILL.md"
+	if !strings.HasSuffix(p, want) {
+		t.Errorf("openclaw GlobalPath=%q does not end with %q", p, want)
+	}
+}
+
+func TestOpenClawDetectViaHomeDir(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("HOME", dir)
+	got := skill.FindTarget("openclaw")
+	if got == nil {
+		t.Fatal("openclaw missing")
+	}
+	det, _ := got.Detect()
+	if det {
+		t.Error("openclaw should not be detected when ~/.openclaw is absent")
+	}
+	if err := os.MkdirAll(filepath.Join(dir, ".openclaw"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	det, _ = got.Detect()
+	if !det {
+		t.Error("openclaw should be detected when ~/.openclaw exists")
+	}
+}
+
+func TestOpenClawListsAsTarget(t *testing.T) {
+	// Iterate the source-of-truth slice and confirm openclaw is present and ordered last.
+	names := make([]string, 0, len(skill.Targets))
+	for _, target := range skill.Targets {
+		names = append(names, target.Name)
+	}
+	if names[len(names)-1] != "openclaw" {
+		t.Errorf("openclaw should be last in skill.Targets; got %v", names)
+	}
+}

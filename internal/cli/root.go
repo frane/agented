@@ -30,6 +30,7 @@ func Build(versionInfo cmd.VersionInput, stdin io.Reader, stdout, stderr io.Writ
 	root := &cobra.Command{
 		Use:           "ae",
 		Short:         "Stateful editor for LLM agents.",
+		Version:       versionInfo.Version + " (commit " + versionInfo.Commit + ", built " + versionInfo.Date + ")",
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
@@ -39,11 +40,13 @@ func Build(versionInfo cmd.VersionInput, stdin io.Reader, stdout, stderr io.Writ
 			return app.postRun(cmd, args)
 		},
 	}
+	root.SetVersionTemplate("ae version {{.Version}}\n")
 	root.PersistentFlags().StringVarP(&app.AsActor, "as", "a", "", "Actor identity for this invocation (overrides AE_ACTOR and config)")
 	root.PersistentFlags().StringVar(&app.OutputFormat, "format", "", "Output format: tab | json")
 	root.PersistentFlags().BoolVarP(&app.JSONFlag, "json", "j", false, "Shortcut for --format=json")
 	root.PersistentFlags().BoolVarP(&app.Header, "header", "H", false, "Print a header line above tab output")
-	root.PersistentFlags().StringVarP(&app.WorkspaceOverride, "workspace", "W", "", "Path to .agented dir; overrides discovery")
+	root.PersistentFlags().StringVar(&app.WorkspaceOverride, "workspace-dir", "", "Path to .agented dir; overrides discovery")
+	root.PersistentFlags().BoolVar(&app.NoAutoWorkspace, "no-auto-workspace", false, "Skip project-root auto-creation; fall back to global workspace")
 
 	registerVerbs(app, root)
 	return root
@@ -60,6 +63,7 @@ type App struct {
 	JSONFlag          bool
 	Header            bool
 	WorkspaceOverride string
+	NoAutoWorkspace   bool
 
 	// resolved during preRun
 	cfg     *config.Config
@@ -97,9 +101,22 @@ func (a *App) preRun(c *cobra.Command, _ []string) error {
 		if err != nil {
 			return err
 		}
-		dir, _, err := workspace.Locate(cwd)
+		// Read the global config alone to find the auto-create policy.
+		// Project config can't be read yet (we don't know the workspace).
+		gcfg, _, gerr := config.Resolve(gpath, "", nil)
+		autoCreate := "root-only"
+		if gerr == nil && gcfg.Workspace.AutoCreate != "" {
+			autoCreate = gcfg.Workspace.AutoCreate
+		}
+		// `init` and `version` skip workspace creation (init creates explicitly,
+		// version doesn't need a DB).
+		opts := workspace.LocateOptions{
+			AutoCreate:      autoCreate,
+			NoAutoWorkspace: a.NoAutoWorkspace || skip[name],
+			Stderr:          a.Stderr,
+		}
+		dir, _, err := workspace.LocateWith(cwd, opts)
 		if err != nil {
-			// Fallback: tolerate missing global dir for `ae version`/etc.
 			if !skip[name] {
 				return err
 			}

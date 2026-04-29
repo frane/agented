@@ -138,6 +138,15 @@ func buildJSON(r *cmd.Result) any {
 	if r.Prune != nil {
 		m["prune"] = r.Prune.Report
 	}
+	if r.Find != nil {
+		m["find"] = r.Find
+	}
+	if r.Apply != nil {
+		m["apply"] = r.Apply
+	}
+	if r.Merge != nil {
+		m["merge"] = r.Merge
+	}
 	return m
 }
 
@@ -209,6 +218,35 @@ func emitTab(w io.Writer, r *cmd.Result, header, includeToken bool) error {
 				fmt.Fprintf(w, "transaction\tid=%d\towner=%s\tstarted_at=%s\n",
 					s.OpenTx.ID, s.OpenTx.Actor, s.OpenTx.StartedAt.Format("2006-01-02T15:04:05Z"))
 			}
+			if len(s.WorkspaceFiles) > 0 {
+				if header {
+					fmt.Fprintln(w, "ws_file\tpath\thead_edit_id\tannotations\tbranches\tdirty\ttx_id\tlast_actor\tlast_modified\tclosed\tstate_token")
+				}
+				for _, row := range s.WorkspaceFiles {
+					dirty := "clean"
+					if row.Dirty {
+						dirty = "dirty"
+					}
+					txid := ""
+					if row.TransactionID != nil {
+						txid = fmt.Sprintf("%d", *row.TransactionID)
+					}
+					closed := ""
+					if row.Closed {
+						closed = "closed"
+					}
+					ts := ""
+					if !row.LastModified.IsZero() {
+						ts = row.LastModified.Format("2006-01-02T15:04:05Z")
+					}
+					fmt.Fprintf(w, "ws_file\t%s\t%d\t%d\t%d\t%s\t%s\t%s\t%s\t%s\t%s\n",
+						row.Path, row.HeadEditID, row.Annotations, row.Branches,
+						dirty, txid, row.LastActor, ts, closed, row.StateToken)
+				}
+				if r.StateToken != "" {
+					fmt.Fprintf(w, "workspace_state_token\t%s\n", r.StateToken)
+				}
+			}
 			if s.StorageReport != nil {
 				sr := s.StorageReport
 				fmt.Fprintf(w, "storage\tdb_bytes=%d\tedits=%d\tbranches=%d\tannotations=%d\taudit=%d\tstale_buffers=%d\tstale_branches=%d\n",
@@ -251,6 +289,17 @@ func emitTab(w io.Writer, r *cmd.Result, header, includeToken bool) error {
 		if includeToken {
 			fmt.Fprintf(w, "state_token\t%s\n", r.StateToken)
 		}
+		return nil
+	case r.Find != nil:
+		if header {
+			fmt.Fprintln(w, "path\tline\tcolumn\thead_edit_id\tstate_token\ttext")
+		}
+		for _, m := range r.Find.Matches {
+			fmt.Fprintf(w, "%s\t%d\t%d\t%d\t%s\t%s\n",
+				m.Path, m.Line, m.Column, m.HeadEditID, m.StateToken, m.Text)
+		}
+		fmt.Fprintf(w, "find_summary\tfiles_searched=%d\thits=%d\ttruncated=%t\tworkspace_state_token=%s\n",
+			r.Find.FilesSearched, len(r.Find.Matches), r.Find.HitsTruncated, r.Find.WorkspaceStateToken)
 		return nil
 	case r.Diff != nil:
 		fmt.Fprint(w, r.Diff.Unified)
@@ -387,6 +436,21 @@ func emitTab(w io.Writer, r *cmd.Result, header, includeToken bool) error {
 			rep.DryRun, rep.FilesClosedPruned, rep.BranchesPruned, rep.EditsCollapsed, rep.OrphanMarks, rep.BytesEstimated)
 		for _, d := range rep.Details {
 			fmt.Fprintln(w, "  -", d)
+		}
+		return nil
+	case r.Apply != nil:
+		ap := r.Apply
+		fmt.Fprintf(w, "apply\tops=%d\tnew_edit_id=%d\tnew_head_id=%d\tfailed_at=%d\tstate_token=%s\n",
+			ap.OpsApplied, ap.NewEditID, ap.NewHeadID, ap.FailedAt, r.StateToken)
+		for _, pf := range ap.PerFile {
+			fmt.Fprintf(w, "apply_file\tpath=%s\thead_edit_id=%d\tstate_token=%s\n",
+				pf.Path, pf.HeadEditID, pf.StateToken)
+		}
+		if ap.WorkspaceStateToken != "" {
+			fmt.Fprintf(w, "workspace_state_token\t%s\n", ap.WorkspaceStateToken)
+		}
+		if ap.FailMsg != "" {
+			fmt.Fprintf(w, "fail\tmsg=%s\n", ap.FailMsg)
 		}
 		return nil
 	}

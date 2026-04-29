@@ -29,6 +29,16 @@ type Config struct {
 	Skill       SkillCfg       `json:"skill"`
 	MCP         MCPCfg         `json:"mcp"`
 	Logging     LoggingCfg     `json:"logging"`
+	Workspace   WorkspaceCfg   `json:"workspace"`
+}
+
+// WorkspaceCfg controls workspace discovery (used by Locate).
+type WorkspaceCfg struct {
+	// AutoCreate is one of: "root-only" (default), "true", "false".
+	// "root-only": auto-create at the project root when one is detected.
+	// "true": also auto-create at cwd when no project root is detected.
+	// "false": disable tier-2 entirely (require explicit `ae init`).
+	AutoCreate string `json:"auto_create"`
 }
 
 type Concurrency struct {
@@ -251,6 +261,7 @@ func envApply(merged map[string]any, sources Sources) {
 		"AE_MCP_UNIX_SOCKET_PATH":      "mcp.unix_socket_path",
 		"AE_LOGGING_LEVEL":             "logging.level",
 		"AE_LOGGING_DESTINATION":       "logging.destination",
+		"AE_WORKSPACE_AUTO_CREATE":     "workspace.auto_create",
 	}
 	for envName, dotted := range envMap {
 		if v, ok := os.LookupEnv(envName); ok {
@@ -337,6 +348,11 @@ func Validate(c *Config) error {
 	case "debug", "info", "warn", "error":
 	default:
 		return fmt.Errorf("logging.level: invalid %q", c.Logging.Level)
+	}
+	switch c.Workspace.AutoCreate {
+	case "", "root-only", "true", "false":
+	default:
+		return fmt.Errorf("workspace.auto_create: invalid %q (want root-only|true|false)", c.Workspace.AutoCreate)
 	}
 	for name, s := range map[string]string{
 		"transactions.auto_rollback_idle_for":      c.Transactions.AutoRollbackIdleFor,

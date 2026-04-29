@@ -135,3 +135,41 @@ func TestList(t *testing.T) {
 		t.Errorf("claude: %+v", c)
 	}
 }
+
+func TestOpenClawSkipMessage(t *testing.T) {
+	ws := t.TempDir()
+	results, err := rules.Install(rules.InstallOptions{
+		Selected: "openclaw", Scope: rules.ScopeProject, Workspace: ws,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 1 || results[0].Status != rules.StatusSkipped {
+		t.Fatalf("expected single skipped result, got %+v", results)
+	}
+	if !strings.Contains(results[0].Reason, "skill install is sufficient") {
+		t.Errorf("expected explanatory skip reason, got %q", results[0].Reason)
+	}
+}
+
+func TestOpenClawIncludedInTargetAll(t *testing.T) {
+	ws := t.TempDir()
+	results, err := rules.Install(rules.InstallOptions{
+		Selected: "all", Scope: rules.ScopeProject, Workspace: ws,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var seen *rules.Result
+	for i := range results {
+		if results[i].Target == "openclaw" {
+			seen = &results[i]
+		}
+	}
+	if seen == nil {
+		t.Fatal("openclaw absent from --target all results")
+	}
+	if seen.Status != rules.StatusSkipped {
+		t.Errorf("openclaw under --target all should skip, got %s", seen.Status)
+	}
+}

@@ -56,6 +56,7 @@ type Result struct {
 	Prune    *PruneResult
 	Apply    *ApplyResult
 	Merge    *MergeResult
+	Find     *FindResult
 }
 
 // OpenResult is returned by the open verb.
@@ -86,6 +87,7 @@ type StatusResult struct {
 	MarkCount     int
 	AnnotationCount int
 	StorageReport *store.StorageReport
+	WorkspaceFiles []WorkspaceFileRow
 }
 
 // ViewResult is a file view.

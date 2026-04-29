@@ -187,3 +187,19 @@ func contains(haystack []string, needle string) bool {
 	}
 	return false
 }
+
+func TestOpenClawSkipMessage(t *testing.T) {
+	ws := t.TempDir()
+	results, err := permissions.Install(permissions.InstallOptions{
+		Selected: "openclaw", Scope: permissions.ScopeProject, Workspace: ws,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 1 || results[0].Status != permissions.StatusSkipped {
+		t.Fatalf("expected single skipped result, got %+v", results)
+	}
+	if !strings.Contains(results[0].Reason, "agent level by OpenClaw") {
+		t.Errorf("expected explanatory skip reason, got %q", results[0].Reason)
+	}
+}

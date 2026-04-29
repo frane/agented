@@ -40,7 +40,7 @@ func TestWriteCreatesNewFile(t *testing.T) {
 	}
 }
 
-func TestWriteBacksUpExisting(t *testing.T) {
+func TestWriteCleansUpBackupOnSuccess(t *testing.T) {
 	dir := t.TempDir()
 	p := filepath.Join(dir, "a.txt")
 	if err := os.WriteFile(p, []byte("old\n"), 0o644); err != nil {
@@ -51,18 +51,27 @@ func TestWriteBacksUpExisting(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if backup == "" {
-		t.Fatal("expected backup path")
-	}
-	if !strings.Contains(backup, ".agented-backup-") {
-		t.Errorf("unexpected backup name: %q", backup)
-	}
-	if data, _ := os.ReadFile(backup); string(data) != "old\n" {
-		t.Errorf("backup content: %q", data)
+	// The new contract: backup is purely transient. On successful Write,
+	// it must be removed and the returned path must be empty.
+	if backup != "" {
+		t.Errorf("expected empty backup path on success, got %q", backup)
 	}
 	if data, _ := os.ReadFile(p); string(data) != "new\n" {
 		t.Errorf("file content: %q", data)
 	}
+	// The directory must contain only the target file, no backup sidecar.
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 || entries[0].Name() != "a.txt" {
+		var names []string
+		for _, e := range entries {
+			names = append(names, e.Name())
+		}
+		t.Errorf("expected only a.txt, got %v", names)
+	}
+	_ = strings.Contains
 }
 
 func TestDryRunReturnsDiffWithoutWriting(t *testing.T) {

@@ -55,7 +55,38 @@ func registerVerbs(a *App, root *cobra.Command) {
 		newApplyCmd(a),
 		newMoveCmd(a),
 		newMergeCmd(a),
+		newFindCmd(a),
+		newMCPCmd(a),
 	)
+}
+
+func newFindCmd(a *App) *cobra.Command {
+	var (
+		limit         int
+		includeClosed bool
+	)
+	c := &cobra.Command{
+		Use:     "find <pattern>",
+		Aliases: []string{"f"},
+		Short:   "Cross-file regex search across the workspace",
+		Args:    cobra.ExactArgs(1),
+		RunE: func(_ *cobra.Command, args []string) error {
+			res, err := a.engine.Find(cmd.FindInput{
+				Pattern:       args[0],
+				Limit:         limit,
+				IncludeClosed: includeClosed,
+			})
+			if err != nil {
+				a.auditErr("find", map[string]any{"pattern": args[0]}, err.Error(), nil, nil)
+				return wrapErr(err)
+			}
+			a.auditOK("find", map[string]any{"pattern": args[0]}, nil, nil)
+			return a.emit(res)
+		},
+	}
+	c.Flags().IntVarP(&limit, "limit", "n", 0, "Max total matches across files (default 200)")
+	c.Flags().BoolVarP(&includeClosed, "include-closed", "c", false, "Include closed files in the search")
+	return c
 }
 
 // readTextInput resolves the text source for write verbs. Sources in
@@ -217,8 +248,10 @@ func newListCmd(a *App) *cobra.Command {
 
 func newStatusCmd(a *App) *cobra.Command {
 	var (
-		storage  bool
-		diffDisk bool
+		storage       bool
+		diffDisk      bool
+		workspace     bool
+		includeClosed bool
 	)
 	c := &cobra.Command{
 		Use:     "status [path]",
@@ -230,7 +263,13 @@ func newStatusCmd(a *App) *cobra.Command {
 			if len(args) == 1 {
 				path = args[0]
 			}
-			res, err := a.engine.Status(cmd.StatusInput{Path: path, Storage: storage, DiffDisk: diffDisk})
+			res, err := a.engine.Status(cmd.StatusInput{
+				Path:          path,
+				Storage:       storage,
+				DiffDisk:      diffDisk,
+				Workspace:     workspace,
+				IncludeClosed: includeClosed,
+			})
 			if err != nil {
 				a.auditErr("status", map[string]any{"path": path}, err.Error(), nil, nil)
 				return wrapErr(err)
@@ -241,6 +280,8 @@ func newStatusCmd(a *App) *cobra.Command {
 	}
 	c.Flags().BoolVar(&storage, "storage", false, "Include storage report")
 	c.Flags().BoolVarP(&diffDisk, "diff-disk", "D", false, "Include unified diff between head and on-disk content when dirty")
+	c.Flags().BoolVarP(&workspace, "workspace", "W", false, "Print full per-file workspace table with workspace state token")
+	c.Flags().BoolVarP(&includeClosed, "include-closed", "c", false, "Include closed files in the workspace listing")
 	return c
 }
 

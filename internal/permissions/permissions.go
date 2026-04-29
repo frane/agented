@@ -73,6 +73,7 @@ type Target struct {
 // clients here.
 var Targets = []Target{
 	claudeTarget,
+	openclawTarget,
 }
 
 // FindTarget returns the Target with the given name, or nil if unknown.
@@ -176,6 +177,29 @@ var claudeTarget = Target{
 	},
 }
 
+// openclawTarget — OpenClaw manages permissions at the agent level rather
+// than via a settings.json schema, so explicit ae permissions install is a
+// no-op. Present so `--target all` and `--target openclaw` produce a clear
+// skip message instead of an error.
+var openclawTarget = Target{
+	Name: "openclaw",
+	GlobalPath: func() (string, error) {
+		return "", nil
+	},
+	ProjectPath: func(workspace string) string {
+		return ""
+	},
+	Detect: func() (bool, string) {
+		return false, "permissions are managed at the agent level by OpenClaw itself; nothing to install"
+	},
+	Apply: func(path string, rules []string) ([]string, error) {
+		return nil, nil
+	},
+	Remove: func(path string, rules []string) ([]string, error) {
+		return nil, nil
+	},
+}
+
 // readJSONObject reads a JSON object from path. Returns an empty map (no
 // error) if the file is absent. Errors only on IO/parse failure when the
 // file does exist.
@@ -276,6 +300,10 @@ func Install(opts InstallOptions) ([]Result, error) {
 }
 
 func applyOne(t *Target, scope Scope, workspace string, rules []string, dryRun bool) Result {
+	if t.Name == "openclaw" {
+		return Result{Target: t.Name, Status: StatusSkipped,
+			Reason: "permissions are managed at the agent level by OpenClaw itself; skipping"}
+	}
 	path, err := resolvePath(t, scope, workspace)
 	if err != nil {
 		return Result{Target: t.Name, Status: StatusError, Reason: err.Error()}

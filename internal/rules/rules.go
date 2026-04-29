@@ -79,6 +79,7 @@ var Targets = []Target{
 	codexTarget,
 	cursorTarget,
 	agentsTarget,
+	openclawTarget,
 }
 
 // FindTarget returns the named target or nil.
@@ -141,6 +142,18 @@ var agentsTarget = Target{
 	Detect:      func() (bool, string) { return false, "agents target is project-only by spec" },
 }
 
+// openclawTarget — OpenClaw loads SKILL.md content directly, so the rules
+// section injection is unnecessary. We expose it so `--target all` and
+// `--target openclaw` both produce a clear, intentional skip message.
+var openclawTarget = Target{
+	Name:        "openclaw",
+	ProjectPath: nil,
+	GlobalPath:  nil,
+	Detect: func() (bool, string) {
+		return false, "skill install is sufficient (OpenClaw loads SKILL.md content directly)"
+	},
+}
+
 func homeSubExists(name string) (bool, string) {
 	home, err := os.UserHomeDir()
 	if err != nil || home == "" {
@@ -200,6 +213,10 @@ func dedupeAgentsCodex(rs []Result) []Result {
 }
 
 func applyOne(t *Target, opts InstallOptions) Result {
+	if t.Name == "openclaw" {
+		return Result{Target: t.Name, Status: StatusSkipped,
+			Reason: "skill install is sufficient (OpenClaw loads SKILL.md content directly); skipping rules injection"}
+	}
 	path, err := resolvePath(t, opts)
 	if err != nil {
 		return Result{Target: t.Name, Status: StatusError, Reason: err.Error()}

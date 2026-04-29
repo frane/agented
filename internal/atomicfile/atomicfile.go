@@ -69,6 +69,14 @@ func (e *Editor) Write(content []byte) (string, error) {
 		_ = e.restore()
 		return backupPath, errors.New("validate: post-write content does not match input")
 	}
+	// Successful write: the backup served its purpose, drop it. The SQLite
+	// store carries the durable history; the disk-side backup is only a
+	// safety net for the rename window.
+	if backupPath != "" {
+		_ = os.Remove(backupPath)
+		e.backup = ""
+		backupPath = ""
+	}
 	return backupPath, nil
 }
 

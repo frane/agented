@@ -106,6 +106,24 @@ func RegisterTools(s *mserver.MCPServer, e *cmd.Engine) {
 		}, e.Search),
 	)
 
+	// find (cross-file regex search across the workspace)
+	s.AddTool(
+		mcpgo.NewTool("ae_find",
+			mcpgo.WithDescription("Cross-file regex search across the workspace; returns per-file state tokens and a workspace state token."),
+			mcpgo.WithString("pattern", mcpgo.Description("RE2 pattern"), mcpgo.Required()),
+			mcpgo.WithNumber("limit", mcpgo.Description("Max total matches across files; 0 = default 200")),
+			mcpgo.WithBoolean("include_closed", mcpgo.Description("Include closed files in the search")),
+		),
+		toolHandler(func(args map[string]any) (cmd.FindInput, error) {
+			pattern, _ := args["pattern"].(string)
+			if pattern == "" {
+				return cmd.FindInput{}, errors.New("pattern required")
+			}
+			ic, _ := args["include_closed"].(bool)
+			return cmd.FindInput{Pattern: pattern, Limit: numberArg(args, "limit"), IncludeClosed: ic}, nil
+		}, e.Find),
+	)
+
 	// diff
 	s.AddTool(
 		mcpgo.NewTool("ae_diff",
