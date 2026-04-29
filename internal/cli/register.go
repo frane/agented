@@ -51,6 +51,7 @@ func registerVerbs(a *App, root *cobra.Command) {
 		newPruneAuditCmd(a),
 		newPermissionsCmd(a),
 		newRulesCmd(a),
+		newSetupCmd(a),
 		newApplyCmd(a),
 		newMoveCmd(a),
 		newMergeCmd(a),

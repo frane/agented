@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/frane/agented/internal/atomicfile"
 	"github.com/frane/agented/internal/store"
 )
 
@@ -34,7 +35,7 @@ func (e *Engine) Save(in SaveInput) (*Result, error) {
 			Save:       &SaveResult{Path: abs, Hash: fi.ContentHash, Bytes: len(content)},
 		}, nil
 	}
-	if err := writeFileAtomic(abs, []byte(content), 0o644); err != nil {
+	if _, err := atomicfile.New(abs).Write([]byte(content)); err != nil {
 		return nil, err
 	}
 	return &Result{

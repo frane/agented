@@ -8,6 +8,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/frane/agented/internal/atomicfile"
 )
 
 // OpenFileResult is returned by OpenFile.
@@ -32,11 +34,9 @@ func (s *Store) OpenFile(actor, path string) (*OpenFileResult, error) {
 		if !os.IsNotExist(err) {
 			return nil, fmt.Errorf("read %s: %w", abs, err)
 		}
-		// Auto-create empty file on first open so callers don't need to `touch`.
-		if mkErr := os.MkdirAll(filepath.Dir(abs), 0o755); mkErr != nil {
-			return nil, mkErr
-		}
-		if wErr := os.WriteFile(abs, nil, 0o644); wErr != nil {
+		// Auto-create empty file via atomicfile so write semantics are
+		// consistent with everything else (mkdir, atomic rename, validation).
+		if _, wErr := atomicfile.New(abs).Write(nil); wErr != nil {
 			return nil, wErr
 		}
 		content = nil
