@@ -80,7 +80,7 @@ release:
     name: agented
   draft: false
   prerelease: auto
-  mode: replace
+  mode: keep-existing
   header: |
     ## agented {{.Tag}}
 
