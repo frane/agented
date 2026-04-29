@@ -49,11 +49,13 @@ func registerVerbs(a *App, root *cobra.Command) {
 		newConfigCmd(a),
 		newPruneCmd(a),
 		newPruneAuditCmd(a),
+		newPermissionsCmd(a),
 	)
 }
 
-// readTextInput resolves the --text/--text-file/--from-stdin flag triplet
-// into a final text string.
+// readTextInput resolves the text source for write verbs. Sources in
+// precedence order: --text inline, --text-file, --from-stdin, or piped
+// stdin auto-detected when no flag is set. Multiple flags is an error.
 func readTextInput(stdin io.Reader, text, file string, fromStdin bool) (string, error) {
 	count := 0
 	if text != "" {
@@ -78,14 +80,29 @@ func readTextInput(stdin io.Reader, text, file string, fromStdin bool) (string, 
 		}
 		return string(b), nil
 	}
-	if fromStdin {
+	if fromStdin || isPipedStdin(stdin) {
 		b, err := io.ReadAll(stdin)
 		if err != nil {
 			return "", err
 		}
 		return string(b), nil
 	}
-	return "", errors.New("one of --text, --text-file, --from-stdin is required")
+	return "", errors.New("one of --text, --text-file, --from-stdin is required (or pipe content via stdin)")
+}
+
+// isPipedStdin reports whether stdin is a non-terminal data source (a pipe
+// or redirected file). Used to auto-detect "ae i foo --after 0 << EOF ..."
+// without requiring an explicit --from-stdin flag.
+func isPipedStdin(r io.Reader) bool {
+	f, ok := r.(*os.File)
+	if !ok {
+		return false
+	}
+	stat, err := f.Stat()
+	if err != nil {
+		return false
+	}
+	return (stat.Mode() & os.ModeCharDevice) == 0
 }
 
 // withAuditOK writes an "ok" audit row.
@@ -187,9 +204,9 @@ func newListCmd(a *App) *cobra.Command {
 			return a.emit(res)
 		},
 	}
-	c.Flags().BoolVar(&all, "all", false, "Include closed files")
-	c.Flags().BoolVar(&closed, "closed", false, "Show only closed files")
-	c.Flags().BoolVar(&stale, "stale", false, "Annotate stale buffers")
+	c.Flags().BoolVarP(&all, "all", "A", false, "Include closed files")
+	c.Flags().BoolVarP(&closed, "closed", "c", false, "Show only closed files")
+	c.Flags().BoolVarP(&stale, "stale", "s", false, "Annotate stale buffers")
 	return c
 }
 
@@ -214,7 +231,7 @@ func newStatusCmd(a *App) *cobra.Command {
 			return a.emit(res)
 		},
 	}
-	c.Flags().BoolVar(&storage, "storage", false, "Include storage report")
+	c.Flags().BoolVarP(&storage, "storage", "S", false, "Include storage report")
 	return c
 }
 
@@ -267,9 +284,8 @@ func newSearchCmd(a *App) *cobra.Command {
 			return a.emit(res)
 		},
 	}
-	c.Flags().StringVar(&pattern, "pattern", "", "Go regexp (RE2) pattern (required)")
-	c.Flags().IntVar(&limit, "limit", 0, "Max matches (default 100)")
-	c.MarkFlagRequired("pattern")
+	c.Flags().StringVarP(&pattern, "pattern", "p", "", "Go regexp (RE2) pattern (required)")
+	c.Flags().IntVarP(&limit, "limit", "l", 0, "Max matches (default 100)")
 	return c
 }
 
@@ -293,8 +309,8 @@ func newDiffCmd(a *App) *cobra.Command {
 			return a.emit(res)
 		},
 	}
-	c.Flags().Int64Var(&from, "from", 0, "Edit ID for the from side (default parent of head)")
-	c.Flags().Int64Var(&to, "to", 0, "Edit ID for the to side (default head)")
+	c.Flags().Int64VarP(&from, "from", "f", 0, "Edit ID for the from side (default parent of head)")
+	c.Flags().Int64VarP(&to, "to", "T", 0, "Edit ID for the to side (default head)")
 	return c
 }
 
@@ -317,8 +333,8 @@ func newLogCmd(a *App) *cobra.Command {
 			return a.emit(res)
 		},
 	}
-	c.Flags().IntVar(&limit, "limit", 0, "Max entries (default 50)")
-	c.Flags().StringVar(&actor, "actor", "", "Filter by actor")
+	c.Flags().IntVarP(&limit, "limit", "l", 0, "Max entries (default 50)")
+	c.Flags().StringVarP(&actor, "actor", "A", "", "Filter by actor")
 	return c
 }
 

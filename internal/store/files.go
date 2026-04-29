@@ -29,7 +29,17 @@ func (s *Store) OpenFile(actor, path string) (*OpenFileResult, error) {
 	}
 	content, err := os.ReadFile(abs)
 	if err != nil {
-		return nil, fmt.Errorf("read %s: %w", abs, err)
+		if !os.IsNotExist(err) {
+			return nil, fmt.Errorf("read %s: %w", abs, err)
+		}
+		// Auto-create empty file on first open so callers don't need to `touch`.
+		if mkErr := os.MkdirAll(filepath.Dir(abs), 0o755); mkErr != nil {
+			return nil, mkErr
+		}
+		if wErr := os.WriteFile(abs, nil, 0o644); wErr != nil {
+			return nil, wErr
+		}
+		content = nil
 	}
 	hash := HashContent(string(content))
 	now := s.nowMs()

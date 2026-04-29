@@ -25,6 +25,15 @@ func (e *Engine) Save(in SaveInput) (*Result, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Short-circuit: if the on-disk file already matches head content, skip
+	// the write so save is a true no-op when there's nothing to commit.
+	if disk, err := os.ReadFile(abs); err == nil && store.HashContent(string(disk)) == fi.ContentHash {
+		return &Result{
+			FileID:     &fi.ID,
+			StateToken: store.ComputeStateToken(fi.ID, fi.HeadEditID, fi.ContentHash),
+			Save:       &SaveResult{Path: abs, Hash: fi.ContentHash, Bytes: len(content)},
+		}, nil
+	}
 	if err := writeFileAtomic(abs, []byte(content), 0o644); err != nil {
 		return nil, err
 	}
