@@ -119,3 +119,47 @@ func TestWriteIdempotentSameContent(t *testing.T) {
 		t.Errorf("content: %q", got)
 	}
 }
+
+func TestWritePreservesExecutableBit(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "script.sh")
+	// Pre-create with mode 0755 (executable).
+	if err := os.WriteFile(p, []byte("#!/bin/sh\necho old\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	e := atomicfile.New(p)
+	if _, err := e.Write([]byte("#!/bin/sh\necho new\n")); err != nil {
+		t.Fatal(err)
+	}
+	fi, err := os.Stat(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := fi.Mode().Perm() & 0o111; got == 0 {
+		t.Errorf("executable bit lost after Write: mode=%o", fi.Mode().Perm())
+	}
+	if fi.Mode().Perm() != 0o755 {
+		t.Errorf("mode changed: got %o want 0755", fi.Mode().Perm())
+	}
+}
+
+func TestWriteUsesDefaultModeForNewFile(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "new.txt")
+	e := atomicfile.New(p)
+	if _, err := e.Write([]byte("hello\n")); err != nil {
+		t.Fatal(err)
+	}
+	fi, err := os.Stat(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Umask may strip group/other bits; just confirm executable is NOT set
+	// on a newly-created plain file and owner-readable.
+	if fi.Mode().Perm()&0o111 != 0 {
+		t.Errorf("new file should not be executable: mode=%o", fi.Mode().Perm())
+	}
+	if fi.Mode().Perm()&0o400 == 0 {
+		t.Errorf("new file should be owner-readable: mode=%o", fi.Mode().Perm())
+	}
+}

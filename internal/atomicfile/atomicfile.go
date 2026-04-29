@@ -49,15 +49,21 @@ func (e *Editor) Write(content []byte) (string, error) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return "", err
 	}
+	// Preserve the existing file's mode (e.g. executable bit on shell scripts).
+	// Default 0o644 when the file is being created.
+	mode := os.FileMode(0o644)
+	if fi, err := os.Stat(e.Path); err == nil {
+		mode = fi.Mode().Perm()
+	}
 	var backupPath string
 	if existing, _, err := e.ReadOriginal(); err == nil && existing != nil {
 		backupPath = e.backupName()
-		if err := writeFileAtomic(backupPath, existing, 0o644); err != nil {
+		if err := writeFileAtomic(backupPath, existing, mode); err != nil {
 			return "", fmt.Errorf("backup: %w", err)
 		}
 		e.backup = backupPath
 	}
-	if err := writeFileAtomic(e.Path, content, 0o644); err != nil {
+	if err := writeFileAtomic(e.Path, content, mode); err != nil {
 		return backupPath, err
 	}
 	got, err := os.ReadFile(e.Path)
@@ -88,7 +94,6 @@ func (e *Editor) DryRun(content []byte) (string, error) {
 		return "", err
 	}
 	if original == nil {
-		// File doesn't exist; show the addition as a diff against empty.
 		original = nil
 	}
 	return diff.Unified(string(original), string(content), e.Path+"@now", e.Path+"@new", 3), nil
