@@ -36,6 +36,19 @@ func (e *Engine) Replace(in ReplaceInput) (*Result, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Auto-load on disk drift, before applying the edit. This means the
+	// edit is always layered on top of the latest disk state, so we never
+	// silently overwrite changes made outside ae.
+	loaded, driftReason, derr := e.autoLoadIfDrifted(fi)
+	if derr != nil {
+		return nil, derr
+	}
+	if loaded {
+		// Refresh the FileInfo since the load created a new head.
+		if fresh, _ := e.Store.FileByID(fi.ID); fresh != nil {
+			fi = fresh
+		}
+	}
 	er, conf, err := e.Store.Replace(fi.ID, in.Start, in.End, in.With,
 		store.EditOptions{Actor: e.Actor, TransactionID: txID, ExpectStateToken: in.Expect},
 		e.Config.Concurrency.RequireExpect)
@@ -45,12 +58,17 @@ func (e *Engine) Replace(in ReplaceInput) (*Result, error) {
 		}
 		return nil, err
 	}
+	headContent, _ := e.Store.HeadContent(fi.ID)
+	saved, _ := e.autoSaveAfterEdit(fi, headContent)
 	return &Result{
 		FileID: &fi.ID, EditID: &er.NewEditID, StateToken: er.NewStateToken,
 		Warning: warning,
-		Edit: &EditResult{
+		Edit: &EditResult{Path: fi.Path,
 			NewEditID: er.NewEditID, NewHeadID: er.NewHeadID,
 			LineDelta: er.LineDelta, NewLineCount: er.NewLineCount,
+			Saved:          saved,
+			LoadedFromDisk: loaded,
+			DriftReason:    driftReason,
 		},
 	}, nil
 }
@@ -79,7 +97,7 @@ func (e *Engine) replacePattern(in ReplaceInput) (*Result, error) {
 		return &Result{
 			FileID:     &fi.ID,
 			StateToken: store.ComputeStateToken(fi.ID, fi.HeadEditID, fi.ContentHash),
-			Edit: &EditResult{
+			Edit: &EditResult{Path: fi.Path,
 				NewEditID:    fi.HeadEditID,
 				NewHeadID:    fi.HeadEditID,
 				LineDelta:    0,
@@ -112,7 +130,7 @@ func (e *Engine) replacePattern(in ReplaceInput) (*Result, error) {
 	}
 	return &Result{
 		FileID: &fi.ID, EditID: &er.NewEditID, StateToken: er.NewStateToken,
-		Edit: &EditResult{
+		Edit: &EditResult{Path: fi.Path,
 			NewEditID: er.NewEditID, NewHeadID: er.NewHeadID,
 			LineDelta: er.LineDelta, NewLineCount: er.NewLineCount,
 		},
@@ -137,6 +155,15 @@ func (e *Engine) Insert(in InsertInput) (*Result, error) {
 	if err != nil {
 		return nil, err
 	}
+	loaded, driftReason, derr := e.autoLoadIfDrifted(fi)
+	if derr != nil {
+		return nil, derr
+	}
+	if loaded {
+		if fresh, _ := e.Store.FileByID(fi.ID); fresh != nil {
+			fi = fresh
+		}
+	}
 	er, conf, err := e.Store.Insert(fi.ID, in.After, in.Text,
 		store.EditOptions{Actor: e.Actor, TransactionID: txID, ExpectStateToken: in.Expect},
 		e.Config.Concurrency.RequireExpect)
@@ -146,12 +173,15 @@ func (e *Engine) Insert(in InsertInput) (*Result, error) {
 		}
 		return nil, err
 	}
+	headContent, _ := e.Store.HeadContent(fi.ID)
+	saved, _ := e.autoSaveAfterEdit(fi, headContent)
 	return &Result{
 		FileID: &fi.ID, EditID: &er.NewEditID, StateToken: er.NewStateToken,
 		Warning: warning,
-		Edit: &EditResult{
+		Edit: &EditResult{Path: fi.Path,
 			NewEditID: er.NewEditID, NewHeadID: er.NewHeadID,
 			LineDelta: er.LineDelta, NewLineCount: er.NewLineCount,
+			Saved: saved, LoadedFromDisk: loaded, DriftReason: driftReason,
 		},
 	}, nil
 }
@@ -171,6 +201,15 @@ func (e *Engine) Delete(in DeleteInput) (*Result, error) {
 	if err != nil {
 		return nil, err
 	}
+	loaded, driftReason, derr := e.autoLoadIfDrifted(fi)
+	if derr != nil {
+		return nil, derr
+	}
+	if loaded {
+		if fresh, _ := e.Store.FileByID(fi.ID); fresh != nil {
+			fi = fresh
+		}
+	}
 	er, conf, err := e.Store.Delete(fi.ID, in.Start, in.End,
 		store.EditOptions{Actor: e.Actor, TransactionID: txID, ExpectStateToken: in.Expect},
 		e.Config.Concurrency.RequireExpect)
@@ -180,12 +219,15 @@ func (e *Engine) Delete(in DeleteInput) (*Result, error) {
 		}
 		return nil, err
 	}
+	headContent, _ := e.Store.HeadContent(fi.ID)
+	saved, _ := e.autoSaveAfterEdit(fi, headContent)
 	return &Result{
 		FileID: &fi.ID, EditID: &er.NewEditID, StateToken: er.NewStateToken,
 		Warning: warning,
-		Edit: &EditResult{
+		Edit: &EditResult{Path: fi.Path,
 			NewEditID: er.NewEditID, NewHeadID: er.NewHeadID,
 			LineDelta: er.LineDelta, NewLineCount: er.NewLineCount,
+			Saved: saved, LoadedFromDisk: loaded, DriftReason: driftReason,
 		},
 	}, nil
 }

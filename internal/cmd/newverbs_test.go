@@ -212,9 +212,12 @@ func TestReplacePatternDryRun(t *testing.T) {
 
 func TestStatusDiffDisk(t *testing.T) {
 	e, dir := newEngine(t)
+	// Disable auto-save so we can test dirt-after-edit semantics. The
+	// production default auto-saves the new head to disk, which would
+	// make the file clean after every edit.
+	e.Config.Concurrency.AutoSave = "off"
 	p := writeFile(t, dir, "a.txt", "one\ntwo\n")
 	e.Open(cmd.OpenInput{Path: p})
-	// Modify head; on-disk still has original.
 	st0, _ := e.Status(cmd.StatusInput{Path: p})
 	tok := st0.StateToken
 	e.Replace(cmd.ReplaceInput{Path: p, Start: 1, End: 1, With: "ONE\n", Expect: tok})

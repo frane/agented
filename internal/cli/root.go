@@ -48,6 +48,7 @@ func Build(versionInfo cmd.VersionInput, stdin io.Reader, stdout, stderr io.Writ
 	root.PersistentFlags().BoolVarP(&app.Header, "header", "H", false, "Print a header line above tab output")
 	root.PersistentFlags().StringVar(&app.WorkspaceOverride, "workspace-dir", "", "Path to .agented dir; overrides discovery")
 	root.PersistentFlags().BoolVar(&app.NoAutoWorkspace, "no-auto-workspace", false, "Skip project-root auto-creation; fall back to global workspace")
+	root.PersistentFlags().BoolVar(&app.NoColor, "no-color", false, "Disable ANSI color output (also honors NO_COLOR env var)")
 
 	registerVerbs(app, root)
 	return root
@@ -65,6 +66,7 @@ type App struct {
 	Header            bool
 	WorkspaceOverride string
 	NoAutoWorkspace   bool
+	NoColor           bool
 
 	// resolved during preRun
 	cfg     *config.Config

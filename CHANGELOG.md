@@ -2,6 +2,23 @@
 
 All notable changes to agented are documented here. The format is based on [Keep a Changelog](https://keepachangelog.com), and the project follows [Semantic Versioning](https://semver.org).
 
+## [v0.2.0] - 2026-04-29
+
+### Features
+
+- **Auto-save** by default on write verbs. `ae replace`/`insert`/`delete`/`move`/`extract` and the history verbs (`undo`/`redo`/`head`) atomically flush the new head to disk as part of the same call. Result includes `saved: true` to confirm. Config: `concurrency.auto_save = clean | off | force` (default `clean`). The five-call dance (`open + status + view + replace + save`) collapses to two for the common flow.
+- **Auto-load on disk drift** by default. Before each write, ae stat-s the file. If `(mtime, size)` match the stamp recorded after the last save, no work; otherwise read + hash. On detected drift, the disk content is loaded as a new edit on the tree before the user's edit applies, so external changes are captured (recoverable via `ae undo` / `ae head`) instead of silently overwritten. Config: `concurrency.auto_load_on_drift` (default `true`). Env override: `AE_AUTO_LOAD_ON_DRIFT=false`.
+- **`ae show <path>`** renders a Claude Code-style colored, syntax-highlighted diff (chroma-backed) for the most recent edit. Opt-in display command — write verbs return the lean tab format by default so agents pay no extra tokens.
+- **Agent-centric `ae setup` wizard.** Detects which agents are present (claude / codex / cursor / openclaw), shows what's available, and asks per-agent which to install. `--yes` runs non-interactively for every detected agent. `--legacy` keeps the previous per-component flow.
+- **Install gating symmetry.** `ae rules install` now skips undetected targets under `--target=all` (matching skill / permissions / mcp). Explicit `--target=<name>` still writes regardless. Cursor without a `.cursor/` dir and OpenClaw skip with explanatory reasons.
+- **`ae rules show` rewritten.** Section body printed once at the top, followed by an aligned per-target status table. Previously duplicated the body across every target.
+- **Tabwriter alignment** on `ae rules list`, `ae permissions list`, `ae mcp list`, and the `ae status -W` per-file table. Empty placeholders standardised to `—`.
+- New env mappings: `AE_AUTO_SAVE`, `AE_AUTO_LOAD_ON_DRIFT`.
+
+### Dependencies
+
+- Added `github.com/alecthomas/chroma/v2` (and its transitive `github.com/dlclark/regexp2`) for the `ae show` command's syntax-highlighting backend. The README's "three deps" claim is now four.
+
 ## [v0.1.1] - 2026-04-29
 
 ### Bug fixes

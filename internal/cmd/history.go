@@ -29,6 +29,9 @@ func (e *Engine) Undo(in UndoInput) (*Result, error) {
 		}
 		return nil, err
 	}
+	if head, herr := e.Store.HeadContent(fi.ID); herr == nil {
+		_, _ = e.autoSaveAfterEdit(fi, head)
+	}
 	return &Result{
 		FileID: &fi.ID, EditID: &res.NewEditID, StateToken: res.NewStateToken,
 		History: &HistoryResult{NewEditID: res.NewEditID, NewHeadID: res.NewHeadID, NewLineCount: res.NewLineCount},
@@ -68,6 +71,9 @@ func (e *Engine) Redo(in RedoInput) (*Result, error) {
 	if last == nil {
 		return nil, fmt.Errorf("redo: nothing to do")
 	}
+	if head, herr := e.Store.HeadContent(fi.ID); herr == nil {
+		_, _ = e.autoSaveAfterEdit(fi, head)
+	}
 	return &Result{
 		FileID: &fi.ID, EditID: &last.NewEditID, StateToken: last.NewStateToken,
 		History: &HistoryResult{NewEditID: last.NewEditID, NewHeadID: last.NewHeadID, NewLineCount: last.NewLineCount},
@@ -89,6 +95,9 @@ func (e *Engine) Head(in HeadInput) (*Result, error) {
 	res, err := e.Store.SetHead(e.Actor, fi.ID, in.EditID)
 	if err != nil {
 		return nil, err
+	}
+	if head, herr := e.Store.HeadContent(fi.ID); herr == nil {
+		_, _ = e.autoSaveAfterEdit(fi, head)
 	}
 	return &Result{
 		FileID: &fi.ID, EditID: &res.NewEditID, StateToken: res.NewStateToken,

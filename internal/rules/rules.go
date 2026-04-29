@@ -188,7 +188,17 @@ func Install(opts InstallOptions) ([]Result, error) {
 		return dedupeAgentsCodex(results), nil
 	}
 	for i := range Targets {
-		results = append(results, applyOne(&Targets[i], opts))
+		t := &Targets[i]
+		// Detection gates writes under --target=all (unset). Explicit
+		// --target=<name> still writes regardless. The agents target is
+		// canonical (always written when its path is supported).
+		if t.Detect != nil && t.Name != "agents" {
+			if det, reason := t.Detect(); !det {
+				results = append(results, Result{Target: t.Name, Status: StatusSkipped, Reason: reason})
+				continue
+			}
+		}
+		results = append(results, applyOne(t, opts))
 	}
 	return dedupeAgentsCodex(results), nil
 }

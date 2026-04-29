@@ -42,6 +42,8 @@ type WorkspaceCfg struct {
 
 type Concurrency struct {
 	RequireExpect string `json:"require_expect"` // writes | warn | off
+	AutoSave         string `json:"auto_save"`           // clean | off | force (default clean)
+	AutoLoadOnDrift  bool   `json:"auto_load_on_drift"` // when true, sniff disk before each write and load divergent content into a new edit
 }
 
 type TransactionsCfg struct {
@@ -73,8 +75,9 @@ type AuditCfg struct {
 }
 
 type OutputCfg struct {
-	DefaultFormat     string `json:"default_format"` // tab | json
+	DefaultFormat     string `json:"default_format"`     // tab | json
 	IncludeStateToken bool   `json:"include_state_token"`
+	SyntaxHighlight   bool   `json:"syntax_highlight"`   // when true, color tokens by language (chroma)
 }
 
 type SkillCfg struct {

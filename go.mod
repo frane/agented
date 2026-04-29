@@ -10,6 +10,8 @@ require (
 )
 
 require (
+	github.com/alecthomas/chroma/v2 v2.24.0 // indirect
+	github.com/dlclark/regexp2 v1.12.0 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/google/jsonschema-go v0.4.2 // indirect
 	github.com/google/uuid v1.6.0 // indirect

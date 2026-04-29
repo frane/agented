@@ -131,10 +131,21 @@ type LogResult struct {
 
 // EditResult is for replace/insert/delete.
 type EditResult struct {
+	Path         string
 	NewEditID    int64
 	NewHeadID    int64
 	LineDelta    int
 	NewLineCount int
+
+	// Implicit-IO outcomes filled by the auto-save/auto-load wrapper around
+	// every write verb. Saved=true means the new head was atomically
+	// flushed to disk. LoadedFromDisk=true means a disk-drift was detected
+	// before the edit and reconciled by reading disk into a new edit;
+	// callers should treat the response as evidence that someone else
+	// edited the file out of band.
+	Saved          bool   `json:"saved"`
+	LoadedFromDisk bool   `json:"loaded_from_disk"`
+	DriftReason    string `json:"drift_reason,omitempty"`
 }
 
 // HistoryResult is for undo/redo/head.

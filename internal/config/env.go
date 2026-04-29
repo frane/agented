@@ -11,6 +11,8 @@ import (
 func envApply(merged map[string]any, sources Sources) {
 	envMap := map[string]string{
 		"AE_ACTOR":                      "actor",
+		"AE_AUTO_LOAD_ON_DRIFT":         "concurrency.auto_load_on_drift",
+		"AE_AUTO_SAVE":                  "concurrency.auto_save",
 		"AE_REQUIRE_EXPECT":             "concurrency.require_expect",
 		"AE_AUTO_ROLLBACK_IDLE_FOR":     "transactions.auto_rollback_idle_for",
 		"AE_STALE_BUFFER_IDLE_FOR":      "stale.buffer_idle_for",
@@ -23,6 +25,7 @@ func envApply(merged map[string]any, sources Sources) {
 		"AE_AUDIT_AUTO_PRUNE":           "audit.auto_prune",
 		"AE_OUTPUT_DEFAULT_FORMAT":      "output.default_format",
 		"AE_OUTPUT_INCLUDE_STATE_TOKEN": "output.include_state_token",
+		"AE_OUTPUT_SYNTAX_HIGHLIGHT":    "output.syntax_highlight",
 		"AE_SKILL_ENFORCE_VERSION":      "skill.enforce_version",
 		"AE_MCP_DEFAULT_TRANSPORT":      "mcp.default_transport",
 		"AE_MCP_TCP_PORT":               "mcp.tcp_port",
