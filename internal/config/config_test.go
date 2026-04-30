@@ -196,3 +196,76 @@ func TestFormatDuration(t *testing.T) {
 		}
 	}
 }
+
+// TestResolveIDETypescriptOverrideKeepsExtensions is the regression test for
+// the v0.3.2 multi-LSP user-report: a project config that sets only
+// ide.languages.typescript {auto_start: true, servers: [...]} should still
+// pick up the embedded extensions map (.ts -> typescript) so ae sy foo.ts
+// finds the right server. The merge must deep-merge maps and replace
+// arrays wholesale, leaving sibling keys untouched.
+func TestResolveIDETypescriptOverrideKeepsExtensions(t *testing.T) {
+	dir := t.TempDir()
+	projectPath := filepath.Join(dir, "config.json")
+	body := `{
+  "ide": {
+    "enabled": true,
+    "languages": {
+      "typescript": {
+        "auto_start": true,
+        "servers": [
+          { "command": "typescript-language-server", "args": ["--stdio"] }
+        ]
+      }
+    }
+  }
+}`
+	if err := os.WriteFile(projectPath, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, _, err := config.Resolve("", projectPath, nil)
+	if err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+	if !cfg.IDE.Enabled {
+		t.Fatalf("ide.enabled lost: %+v", cfg.IDE)
+	}
+	ts, ok := cfg.IDE.Languages["typescript"]
+	if !ok {
+		t.Fatalf("typescript missing from resolved languages")
+	}
+	if !ts.AutoStart {
+		t.Fatalf("typescript.auto_start should be true, got %v", ts.AutoStart)
+	}
+	if len(ts.Servers) != 1 {
+		t.Fatalf("typescript.servers should have one element from project, got %d", len(ts.Servers))
+	}
+	if ts.Servers[0].Command != "typescript-language-server" {
+		t.Fatalf("server command: %q", ts.Servers[0].Command)
+	}
+	// Embedded defaults: .ts -> typescript MUST survive the merge so
+	// LanguageFor("foo.ts") works at daemon time.
+	if cfg.IDE.Extensions[".ts"] != "typescript" {
+		t.Fatalf(".ts extension lost: %v", cfg.IDE.Extensions)
+	}
+	if cfg.IDE.Extensions[".tsx"] != "typescript" {
+		t.Fatalf(".tsx extension lost: %v", cfg.IDE.Extensions)
+	}
+	// Other languages from defaults should still be present.
+	if _, ok := cfg.IDE.Languages["go"]; !ok {
+		t.Fatalf("go language wiped from defaults")
+	}
+}
+
+// TestIDELanguageCfgResolvedServersLegacy: the back-compat shim — a config
+// using the v0.3.0/v0.3.1 single-server form (top-level Server/Args fields,
+// no Servers slice) still resolves to a one-element list.
+func TestIDELanguageCfgResolvedServersLegacy(t *testing.T) {
+	c := config.IDELanguageCfg{Server: "gopls", AutoStart: true}
+	got := c.ResolvedServers()
+	if len(got) != 1 {
+		t.Fatalf("legacy single-server: want 1, got %d", len(got))
+	}
+	if got[0].Name != "gopls" || got[0].Command != "gopls" {
+		t.Fatalf("legacy synth wrong: %+v", got[0])
+	}
+}

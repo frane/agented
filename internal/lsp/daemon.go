@@ -9,6 +9,7 @@ import (
 	"io"
 	"net"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"strconv"
@@ -130,12 +131,25 @@ func (d *Daemon) Run(ctx context.Context) error {
 }
 
 func (d *Daemon) startLanguages(ctx context.Context) {
+	// Drop status rows from prior runs. Stale "crashed" entries from a
+	// previous daemon (e.g. gopls when Go isn't installed on this machine)
+	// would otherwise leak into ae lsp status until the file is opened
+	// fresh. Languages we're about to spawn re-create their rows below.
+	_, _ = d.DB.Exec(`DELETE FROM lsp_status`)
+
 	for lang, cfg := range d.Config.Languages {
 		if !cfg.AutoStart {
 			continue
 		}
 		for _, srv := range cfg.ResolvedServers() {
 			name := serverName(srv)
+			// Preflight: if the binary isn't on PATH, skip silently with a log
+			// line. Avoids cluttering ae lsp status with crashed rows for
+			// languages the user's machine doesn't even have installed.
+			if _, err := exec.LookPath(srv.Command); err != nil {
+				fmt.Fprintf(d.LogWriter, "skip %s/%s: %s not on PATH\n", lang, name, srv.Command)
+				continue
+			}
 			if err := d.spawnServer(ctx, lang, name, srv); err != nil {
 				fmt.Fprintf(d.LogWriter, "spawn %s/%s: %v\n", lang, name, err)
 				_ = SetStatus(d.DB, lang, name, StateCrashed, nil, d.WorkspaceRoot, err.Error())

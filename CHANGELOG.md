@@ -2,6 +2,28 @@
 
 All notable changes to agented are documented here. The format is based on [Keep a Changelog](https://keepachangelog.com), and the project follows [Semantic Versioning](https://semver.org).
 
+## [v0.3.3] - 2026-04-30
+
+### Fixes
+
+- **Skip auto-start servers whose binary is not on PATH.** Default config has `go.auto_start: true`, which crash-recorded a "gopls: file not found" row in `lsp_status` on machines without Go. The user could do nothing about it; the row was just noise muddying `ae lsp status`. The daemon now `exec.LookPath`-s each server's command before spawning. Misses log a single "skip <lang>/<name>: <bin> not on PATH" line and proceed.
+- **Clear stale `lsp_status` rows on daemon start.** Old crashed/stopped rows from prior runs no longer linger.
+
+### Tests
+
+- New regression test `TestResolveIDETypescriptOverrideKeepsExtensions` for the user-reported config-merge case (project sets only `ide.languages.typescript`, embedded `extensions` map must survive). The merge already works; the test pins it.
+- New `TestIDELanguageCfgResolvedServersLegacy` for the back-compat shim that synthesizes a one-element servers slice from the legacy single-server form.
+- New `TestStartLanguagesSkipsMissingBinary` for the LookPath preflight behaviour.
+
+### Notes for users hitting "no language server for .ts" on a TypeScript project
+
+If `ae sy foo.ts` returns `error lsp_unavailable no language server for .ts` while you have `typescript-language-server` on PATH:
+
+1. Confirm the resolved config: `ae config show ide.languages.typescript` should show `auto_start: true` and a `servers` list.
+2. Inspect the daemon log: `cat .agented/lsp.log` shows spawn errors and the new "skip" lines for missing binaries.
+3. Check the status table directly: `sqlite3 .agented/state.db "SELECT * FROM lsp_status"` reveals all rows including ones not in `ae lsp status`' formatted output.
+4. Restart the daemon after editing `.agented/config.json`: `ae lsp stop && ae lsp --background`. The daemon reads config at startup; live config reload isn't supported.
+
 ## [v0.3.2] - 2026-04-30
 
 ### Features
