@@ -17,7 +17,7 @@ INSTALL_DIR ?= $(HOME)/.local/bin
 
 GO_ENV      := CGO_ENABLED=0
 
-.PHONY: build test test-short test-property bench lint release install clean fmt staticcheck
+.PHONY: build test test-short test-property bench lint release install clean fmt staticcheck stage-skill publish-skill
 
 build:
 	$(GO_ENV) go build -ldflags "$(LDFLAGS)" -o $(BINARY) $(PKG)
@@ -65,3 +65,31 @@ install: build
 clean:
 	rm -f $(BINARY)
 	rm -rf dist
+
+# ClawHub publish workflow.
+#
+# `make stage-skill`   stages a clean publish folder at dist/clawhub/skill/
+#                      with SKILL.md, LICENSE, CHANGELOG.md, README.md.
+#                      No Go source, no clawhub-irrelevant files.
+#
+# `make publish-skill` runs stage-skill then `clawhub skill publish` with
+#                      the version pulled from SKILL.md frontmatter.
+#                      Requires `clawhub login` first.
+#
+# Override the version with: make publish-skill PUBLISH_SKILL_VERSION=1.3.0
+PUBLISH_SKILL_DIR     := dist/clawhub/skill
+PUBLISH_SKILL_VERSION ?= $(shell awk '/^version:/{print $$2; exit}' internal/skill/SKILL.md)
+
+stage-skill:
+	@scripts/stage-clawhub-skill.sh $(PUBLISH_SKILL_DIR)
+
+publish-skill: stage-skill
+	@if ! command -v clawhub >/dev/null 2>&1; then \
+	  echo "error: clawhub CLI not on PATH. Install with: bun install -g clawhub" >&2 ; \
+	  exit 1 ; \
+	fi
+	@if [ -z "$(PUBLISH_SKILL_VERSION)" ]; then \
+	  echo "error: could not determine version from SKILL.md frontmatter" >&2 ; \
+	  exit 1 ; \
+	fi
+	clawhub skill publish $(PUBLISH_SKILL_DIR) --version $(PUBLISH_SKILL_VERSION)
