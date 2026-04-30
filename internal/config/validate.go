@@ -39,6 +39,16 @@ func Validate(c *Config) error {
 	default:
 		return fmt.Errorf("logging.level: invalid %q", c.Logging.Level)
 	}
+	switch c.IDE.Diagnostics.Default {
+	case "", "errors", "warnings", "all", "none":
+	default:
+		return fmt.Errorf("ide.diagnostics.default: invalid %q (want errors|warnings|all|none)", c.IDE.Diagnostics.Default)
+	}
+	if c.IDE.Diagnostics.CacheTTL != "" {
+		if _, err := ParseDuration(c.IDE.Diagnostics.CacheTTL); err != nil {
+			return fmt.Errorf("ide.diagnostics.cache_ttl: %w", err)
+		}
+	}
 	switch c.Workspace.AutoCreate {
 	case "", "root-only", "true", "false":
 	default:

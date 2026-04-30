@@ -186,6 +186,16 @@ The four settings most people change first. `concurrency.require_expect: warn` (
 `ae config show --source` prints the resolved configuration with the source file for each value. `ae config set <key> <value>` writes one key. `ae config edit` opens the file when you have more changes than that.
 
 Defaults are good enough that you don't need to touch any of this on day one.
+## IDE mode (optional)
+
+`ae lsp` runs a daemon that hosts language servers (gopls today; pyright, typescript-language-server, and others as their integrations stabilize) and exposes their analysis to the agent through additional verbs. Symbol navigation, reference finding, definitions, plus diagnostics riding along on save and edit responses.
+
+The daemon is opt-in. Set `ide.enabled: true` in `.agented/config.json`, configure the languages you want under `ide.languages`, and `ae` handles the rest: the daemon starts on first IDE-relevant verb in a session, hosts the LSPs, writes diagnostics to the workspace's SQLite as it gets them, and tears down on `ae lsp stop`.
+
+Existing verbs keep working with or without IDE mode. When the daemon is up, mutating verbs pick up diagnostic lines in their responses; when it's down, they don't. The agent never has to know whether the daemon is running for normal editing flow.
+
+v0.3.0 ships with Go (`gopls`) wired up and validated. TypeScript and Python should work via config but treat them as alpha. Rust and others are config-only for now (the daemon will spawn whatever's configured but per-language quirks aren't tested).
+
 ## Build and tests
 
 ```sh

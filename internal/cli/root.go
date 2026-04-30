@@ -49,6 +49,9 @@ func Build(versionInfo cmd.VersionInput, stdin io.Reader, stdout, stderr io.Writ
 	root.PersistentFlags().StringVar(&app.WorkspaceOverride, "workspace-dir", "", "Path to .agented dir; overrides discovery")
 	root.PersistentFlags().BoolVar(&app.NoAutoWorkspace, "no-auto-workspace", false, "Skip project-root auto-creation; fall back to global workspace")
 	root.PersistentFlags().BoolVar(&app.NoColor, "no-color", false, "Disable ANSI color output (also honors NO_COLOR env var)")
+	root.PersistentFlags().BoolVar(&app.NoAutoLSP, "no-auto-lsp", false, "Skip auto-starting the LSP daemon for IDE-relevant verbs")
+	root.PersistentFlags().BoolVarP(&app.NoDiagnostics, "no-diagnostics", "N", false, "Suppress diag lines on mutating verb responses")
+	root.PersistentFlags().StringVarP(&app.DiagnosticsFlag, "diagnostics", "G", "", "Diagnostics severity filter: errors|warnings|all|none")
 
 	registerVerbs(app, root)
 	return root
@@ -67,6 +70,9 @@ type App struct {
 	WorkspaceOverride string
 	NoAutoWorkspace   bool
 	NoColor           bool
+	NoAutoLSP         bool
+	NoDiagnostics     bool
+	DiagnosticsFlag   string
 
 	// resolved during preRun
 	cfg     *config.Config

@@ -1,6 +1,6 @@
 ---
 name: agented
-version: 1.1.0
+version: 1.2.0
 binary: ae
 description: Stateful, persistent text editor for LLM agents. Undo tree, marks, annotations, transactions. Backed by SQLite.
 ---
@@ -285,6 +285,66 @@ ae merge auth.go -l 47 -l 52 -R '20:22=a' -R '47:47=b'
 # all conflicts resolved => commit a merge edit; head moves to the new id
 ```
 
+
+## IDE mode
+
+When `ide.enabled: true` is set in `.agented/config.json`, IDE features are available:
+
+- `ae symbols [path]` (short `ae sy`) lists symbols in a file or workspace
+- `ae find --symbol <name>` (`ae / -s`) finds where a symbol is defined
+- `ae find --references <symbol>` (`ae / -R`) finds all use sites
+- `ae find --definition <symbol> --at <file>:<line>:<col>` (`ae / -D -A`) resolves a definition at a cursor position
+
+You don't need to manage the daemon yourself. If config has IDE enabled, ae ensures the daemon is running when you invoke any IDE-relevant verb. The first invocation in a session may take a second or two while the LSP starts up; subsequent calls are fast.
+
+The user may instruct you to enable or disable IDE mode for a specific task, overriding the config. Honor those instructions for the duration of the conversation.
+
+When IDE features aren't available (config disabled, no instruction override, daemon crashed), LSP-dependent verbs return:
+
+  error    lsp_unavailable    <reason>
+
+Don't retry; proceed without those capabilities. Don't try to start the daemon yourself unless the user explicitly told you to.
+
+When IDE mode is active, mutating verbs (`ae save`, `ae replace`, `ae apply`, etc.) may include diagnostic lines in their responses:
+
+  ok    state_token=ab12cd34
+  diag  warn  foo.go:89:4   unused variable x   lint
+  diag  error foo.go:47:12  undefined: bar      compile
+
+Diagnostics are informational. The operation succeeded; the diagnostics report current LSP findings on the file. Decide whether to act on them based on the task.
+
+The absence of diag lines does not mean the file is clean. It means either there are no diagnostics, the LSP hasn't analyzed yet, the language has no LSP configured, or the daemon isn't running. Don't infer file health from absence of diagnostics. If the user asks "is this file clean?", answer "no diagnostics returned" rather than "the file is clean."
+
+### Severity, kind, and usage vocabularies
+
+| Severity | LSP origin |
+|----------|------------|
+| `error`  | LSP severity 1 |
+| `warn`   | LSP severity 2 |
+| `info`   | LSP severity 3 |
+| `hint`   | LSP severity 4 |
+
+| Kind     | Examples |
+|----------|----------|
+| `func`   | top-level function |
+| `method` | method on a type |
+| `type`   | type alias, struct |
+| `class`  | class (Python, TS) |
+| `interface` | interface |
+| `var`    | local or package variable |
+| `const`  | constant |
+| `field`  | struct/class field |
+| `module` | package or namespace |
+
+| Usage    | When |
+|----------|------|
+| `call`   | `name(...)` |
+| `read`   | name appears, no other label fits |
+| `write`  | `name = ...` or `name := ...` |
+| `import` | import statement |
+| `definition` | the line that defines the symbol |
+| `other`  | catch-all |
+
 ## Errors and recovery
 
 | Error substring          | What it means                                        | Next action                                           |
@@ -309,6 +369,8 @@ ae merge auth.go -l 47 -l 52 -R '20:22=a' -R '47:47=b'
 - Unescaped regex special characters in `search` patterns.
 - Skipping the annotations on `ae open`. They were left for you on purpose; reading them is free.
 - Using Read/Edit/Write on a file ae already manages. They bypass the tree, the annotations, and the conflict detection; the agents that share this workspace will see drift they cannot recover from.
+- Inferring file health from absence of `diag` lines. Diagnostics absence has multiple causes (no findings, LSP not analyzed yet, language not configured, daemon not running).
+- Trying to start `ae lsp` yourself unless the user has explicitly authorized it. The auto-start handles it when config says enabled.
 
 ## Output format reference
 
@@ -339,6 +401,11 @@ For programmatic parsing, pass `--json` to any verb and you'll get a stable JSON
 | redo       | r     | diff       | df    |
 | mark       | m     | status     | st    |
 |            |       | annotate   | an    |
+| symbols    | sy    | lsp        |       |
+| --symbol   | -s    | --references | -R  |
+| --definition | -D  | --at       | -A    |
+| --diagnostics | -G | --no-diagnostics | -N |
+| --background | -B  |            |       |
 
 ## Configuration awareness
 

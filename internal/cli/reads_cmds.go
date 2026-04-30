@@ -1,6 +1,8 @@
 package cli
 
 import (
+	"errors"
+
 	"github.com/spf13/cobra"
 
 	"github.com/frane/agented/internal/cmd"
@@ -10,13 +12,25 @@ func newFindCmd(a *App) *cobra.Command {
 	var (
 		limit         int
 		includeClosed bool
+		symbol        string
+		references    string
+		definition    string
+		atLocation    string
 	)
 	c := &cobra.Command{
 		Use:     "find <pattern>",
 		Aliases: []string{"f"},
-		Short:   "Cross-file regex search across the workspace",
-		Args:    cobra.ExactArgs(1),
+		Short:   "Cross-file regex search across the workspace; with -s/-R/-D, query the LSP daemon",
+		Args:    cobra.RangeArgs(0, 1),
 		RunE: func(_ *cobra.Command, args []string) error {
+			// LSP-mode dispatch: any of -s/-R/-D switches the verb to talk to
+			// the daemon instead of running a regex over the workspace.
+			if symbol != "" || references != "" || definition != "" {
+				return runFindLSP(a, symbol, references, definition, atLocation, limit)
+			}
+			if len(args) != 1 {
+				return wrapErrCode(1, errors.New("find: pattern required (or pass --symbol / --references / --definition)"))
+			}
 			res, err := a.engine.Find(cmd.FindInput{
 				Pattern:       args[0],
 				Limit:         limit,
@@ -32,8 +46,13 @@ func newFindCmd(a *App) *cobra.Command {
 	}
 	c.Flags().IntVarP(&limit, "limit", "n", 0, "Max total matches across files (default 200)")
 	c.Flags().BoolVarP(&includeClosed, "include-closed", "c", false, "Include closed files in the search")
+	c.Flags().StringVarP(&symbol, "symbol", "s", "", "Find where a symbol is defined (LSP, requires IDE mode)")
+	c.Flags().StringVarP(&references, "references", "R", "", "Find all references to a symbol (LSP, requires IDE mode)")
+	c.Flags().StringVarP(&definition, "definition", "D", "", "Resolve a definition at --at <file>:<line>:<col> (LSP, requires IDE mode)")
+	c.Flags().StringVarP(&atLocation, "at", "A", "", "Cursor location for --definition: file:line:col")
 	return c
 }
+
 
 func newViewCmd(a *App) *cobra.Command {
 	var (
