@@ -150,6 +150,15 @@ func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
 	return os.Rename(tmpPath, path)
 }
 
+// WriteSimple atomically replaces path with content using exactly one
+// fsync (the temp file). No backup, no readback verification, no
+// per-call mode-detection overhead. Intended for the autosave-after-edit
+// hot path where the SQLite store carries the durable history; the
+// disk file is a derived view we can rewrite at any time.
+func WriteSimple(path string, content []byte, perm os.FileMode) error {
+	return writeFileAtomic(path, content, perm)
+}
+
 func bytesEqual(a, b []byte) bool {
 	if len(a) != len(b) {
 		return false
