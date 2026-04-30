@@ -243,6 +243,38 @@ ae lsp logs                  # tail .agented/lsp.log
 `--no-auto-lsp` on any verb skips the auto-spawn (power-user safety).
 
 Existing verbs keep working with or without IDE mode. When the daemon is up, mutating verbs pick up diagnostic lines in their responses; when it's down, they don't. The agent never has to know whether the daemon is running for normal editing flow.
+
+### When the daemon doesn't behave: `ae lsp doctor`
+
+LSP setups break in unsurprising ways. The binary isn't installed. It's installed but not on the daemon's PATH because the daemon was spawned from a non-mise/non-asdf shell. The eslint server is up and reports `ready`, but there's no `.eslintrc` in the project so it never produces diagnostics. The Cargo workspace is one directory up from where ae's workspace root resolved. None of these crash anything; they all just produce silence and a confused agent.
+
+`ae lsp doctor [language]` walks the failure modes per language and reports them in a tab-delimited table. Without a language argument it covers everything in `ide.languages`.
+
+```sh
+ae lsp doctor typescript
+# doctor  ide         enabled       -                ok    true
+# doctor  typescript  auto_start    -                ok    true
+# doctor  typescript  binary        tsserver         ok    /Users/.../typescript-language-server (5.1.3)
+# doctor  typescript  binary        eslint           fail  "vscode-eslint-language-server" not on PATH
+# doctor  typescript  config        package.json     ok    /repo/package.json
+# doctor  typescript  config        tsconfig.json    ok    /repo/tsconfig.json
+# doctor  typescript  config        eslint           warn  no .eslintrc.* found; eslint will spawn but report no diagnostics
+# doctor  typescript  deps          node_modules     ok    /repo/node_modules
+# doctor  typescript  daemon        tsserver         ok    pid=12345 state=ready
+# doctor  typescript  daemon        eslint           warn  no lsp_status row; daemon may not have spawned this server yet
+```
+
+Result column is one of `ok | warn | fail | info`. Per-language checks:
+
+| Language   | Binaries probed (default config)                          | Config files looked for                                                                |
+|------------|-----------------------------------------------------------|----------------------------------------------------------------------------------------|
+| go         | `gopls`                                                   | `go.mod` (required), `go.sum`                                                          |
+| typescript | `typescript-language-server`, `vscode-eslint-language-server` | `package.json` (required), `tsconfig.json`, `.eslintrc.*` family, `node_modules/`     |
+| python     | `pyright-langserver`, `ruff`                              | `pyproject.toml` / `setup.py` / `setup.cfg`, `pyrightconfig.json`, venv (`$VIRTUAL_ENV`, `.venv/`, `venv/`) |
+| rust       | `rust-analyzer`                                           | `Cargo.toml` (required), `rust-toolchain.toml`                                         |
+
+Doctor doesn't change anything. It reads the resolved config, walks the filesystem, runs `<bin> --version` with a 2-second timeout, and queries the `lsp_status` table. Run it before assuming `lsp_unavailable` is a daemon bug; nine times out of ten it's a missing config file or a PATH issue.
+
 ### Multiple servers per language
 
 A language can name a list of servers. The first answers symbol/reference/definition queries; all of them contribute diagnostics tagged by server name in the `diag` lines.

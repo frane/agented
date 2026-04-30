@@ -26,6 +26,7 @@ func newLSPCmd(a *App) *cobra.Command {
 		newLSPStatusCmd(a),
 		newLSPStopCmd(a),
 		newLSPLogsCmd(a),
+		newLSPDoctorCmd(a),
 	)
 	// `ae lsp` with no subcommand starts the daemon in the foreground; this is
 	// what the spec calls for. Cobra's RunE handles the no-subcommand case.

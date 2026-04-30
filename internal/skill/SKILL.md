@@ -1,6 +1,6 @@
 ---
 name: agented
-version: 1.2.4
+version: 1.2.5
 binary: ae
 description: Stateful, persistent text editor for LLM agents. Undo tree, marks, annotations, transactions. Backed by SQLite.
 ---
@@ -332,6 +332,8 @@ When IDE features aren't available (config disabled, no instruction override, da
   error    lsp_unavailable    <reason>
 
 Don't retry; proceed without those capabilities. Don't try to start the daemon yourself unless the user explicitly told you to.
+
+When the user asks why IDE features aren't working, run `ae lsp doctor [language]` and report what it says. The output is tab-delimited rows of `doctor <lang> <check> <subject> <result> <detail>` where result is `ok | warn | fail | info`. Doctor reads-only; it can't fix anything, but the `fail` and `warn` rows usually identify the issue (missing binary, missing `package.json`/`Cargo.toml`/`tsconfig.json`, eslint without `.eslintrc`, pyright without an activated venv).
 
 When IDE mode is active, mutating verbs (`ae save`, `ae replace`, `ae apply`, etc.) may include diagnostic lines in their responses:
 

@@ -2,6 +2,18 @@
 
 All notable changes to agented are documented here. The format is based on [Keep a Changelog](https://keepachangelog.com), and the project follows [Semantic Versioning](https://semver.org).
 
+## [v0.3.4] - 2026-04-30
+
+### Features
+
+- **`ae lsp doctor [language]`** diagnoses LSP setup without starting the daemon. Per language, checks: server binary on PATH (with `--version` probe), language-specific config files (`go.mod`, `package.json` / `tsconfig.json` / `.eslintrc.*`, `pyproject.toml` / venv detection, `Cargo.toml`), `node_modules/` presence for typescript, daemon state from `lsp_status`. Output is tab-delimited `doctor <lang> <check> <subject> <result> <detail>` with results in `ok | warn | fail | info`. Read-only; doesn't fix anything, but the `fail` and `warn` rows usually identify the issue.
+- Doctor covers all four supported languages: `go`, `typescript`, `python`, `rust`. Custom languages get a generic "no language-specific config checks defined" line.
+
+### Documentation
+
+- README: new "When the daemon doesn't behave: `ae lsp doctor`" section with sample output and a per-language check table.
+- SKILL.md (1.2.5): the `lsp_unavailable` recovery flow now points the agent at `ae lsp doctor` first.
+
 ## [v0.3.3] - 2026-04-30
 
 ### Fixes
