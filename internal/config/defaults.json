@@ -30,7 +30,8 @@
   "output": {
     "default_format": "tab",
     "include_state_token": true,
-    "syntax_highlight": true
+    "syntax_highlight": true,
+    "nudge_on_pipe": true
   },
   "skill": {
     "enforce_version": "major"

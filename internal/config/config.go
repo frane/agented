@@ -142,6 +142,7 @@ type OutputCfg struct {
 	DefaultFormat     string `json:"default_format"`     // tab | json
 	IncludeStateToken bool   `json:"include_state_token"`
 	SyntaxHighlight   bool   `json:"syntax_highlight"`   // when true, color tokens by language (chroma)
+	NudgeOnPipe       bool   `json:"nudge_on_pipe"`     // when true, read verbs print a stderr nudge when stdout is piped without a --limit/-L or --range bound
 }
 
 type SkillCfg struct {

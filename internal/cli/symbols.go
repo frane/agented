@@ -78,6 +78,7 @@ func newSymbolsCmd(a *App) *cobra.Command {
 					break
 				}
 			}
+			a.nudgePipeUnbounded("symbols", limit > 0 || kind != "" || pattern != "")
 			return nil
 		},
 	}
@@ -145,5 +146,6 @@ func runFindLSP(a *App, symbol, references, definition, at string, limit int) er
 			break
 		}
 	}
+	a.nudgePipeUnbounded("find", limit > 0)
 	return nil
 }

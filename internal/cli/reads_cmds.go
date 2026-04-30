@@ -41,6 +41,7 @@ func newFindCmd(a *App) *cobra.Command {
 				return wrapErr(err)
 			}
 			a.auditOK("find", map[string]any{"pattern": args[0]}, nil, nil)
+			a.nudgePipeUnbounded("find", limit > 0)
 			return a.emit(res)
 		},
 	}
@@ -79,6 +80,7 @@ func newViewCmd(a *App) *cobra.Command {
 				return wrapErr(err)
 			}
 			a.auditOK("view", map[string]any{"path": args[0], "range": rangeStr, "raw": raw}, res.FileID, nil)
+			a.nudgePipeUnbounded("view", rangeStr != "" || raw)
 			return a.emit(res)
 		},
 	}
@@ -104,6 +106,7 @@ func newSearchCmd(a *App) *cobra.Command {
 				return wrapErr(err)
 			}
 			a.auditOK("search", map[string]any{"path": args[0], "pattern": pattern}, res.FileID, nil)
+			a.nudgePipeUnbounded("search", limit > 0)
 			return a.emit(res)
 		},
 	}
@@ -153,6 +156,7 @@ func newLogCmd(a *App) *cobra.Command {
 				return wrapErr(err)
 			}
 			a.auditOK("log", map[string]any{"path": args[0]}, res.FileID, nil)
+			a.nudgePipeUnbounded("log", limit > 0)
 			return a.emit(res)
 		},
 	}

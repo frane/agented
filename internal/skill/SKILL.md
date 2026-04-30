@@ -1,6 +1,6 @@
 ---
 name: agented
-version: 1.2.5
+version: 1.2.6
 binary: ae
 description: Stateful, persistent text editor for LLM agents. Undo tree, marks, annotations, transactions. Backed by SQLite.
 ---
@@ -78,6 +78,7 @@ These are the operations that motivate reaching for `ae` over the built-ins.
 
 ## Reading verbs (idempotent, cheap)
 
+**Bound output server-side, always.** Every read verb has `--limit`/`-L`, `--range`/`-r`, or `--pattern`/`-p` to cap the result set before it leaves the daemon. Do not pipe through `head`/`tail`/`grep` to truncate; the bytes are already on the wire by then. ae prints a stderr nudge when stdout is piped without a bound flag (silence: `AE_NO_NUDGE=1` env or `output.nudge_on_pipe: false` in config).
 | Verb     | Short | Args                          | Output (tab) suffix       | Use when                              |
 |----------|-------|-------------------------------|---------------------------|---------------------------------------|
 | `view`   | `v`   | `<path> [--range S:E] [--raw]` | `state_token\t<hex>`      | Inspect a file or range. `--range` is Python-slice: `1:10` first 10, `-10:` last 10, `5:-5` middle slice, `:20` first 20, `42:50` window. `--raw` emits verbatim bytes (no line-num prefix, no token) for piping to another tool |

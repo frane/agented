@@ -2,6 +2,17 @@
 
 All notable changes to agented are documented here. The format is based on [Keep a Changelog](https://keepachangelog.com), and the project follows [Semantic Versioning](https://semver.org).
 
+## [v0.3.5] - 2026-04-30
+
+### Features
+
+- **Pipe nudge.** Read verbs (`view`, `search`, `find`, `log`, `symbols`, `find -s/-R/-D`) now print a one-line stderr nudge when stdout is piped and no result-bounding flag was set: "use --limit/-L (or --range, --pattern) to bound output server-side; do not | head/tail/grep". Catches the common trained-reflex mistake (`ae sy foo.ts | head -40`) at runtime even when SKILL.md is skimmed. Disable per-call with `AE_NO_NUDGE=1` or globally via `output.nudge_on_pipe: false` in `.agented/config.json`.
+- **`-Z` short** for `--no-auto-lsp` (the only v0.3-era persistent flag without a short).
+
+### Documentation
+
+- SKILL.md (1.2.6): a "Bound output server-side, always" callout sits at the top of the reading verbs table. Same rule that was buried in the anti-patterns list, hoisted into the verb reference where the agent looks first.
+
 ## [v0.3.4] - 2026-04-30
 
 ### Features

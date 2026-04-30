@@ -193,3 +193,28 @@ func wrapErr(err error) error {
 func wrapErrCode(code int, err error) error {
 	return &ExitError{Code: code, Err: err}
 }
+
+// nudgePipeUnbounded prints a stderr nudge when stdout is a pipe (i.e.
+// being captured or piped through a tool like head/tail/grep) and the
+// caller did not pass a result-bounding flag. ae has server-side bounds
+// on every read verb (--limit, --range, --pattern); piping through head
+// is wasteful and against SKILL.md.
+func (a *App) nudgePipeUnbounded(verb string, bounded bool) {
+	if bounded {
+		return
+	}
+	if a.cfg != nil && !a.cfg.Output.NudgeOnPipe {
+		return
+	}
+	if os.Getenv("AE_NO_NUDGE") == "1" {
+		return
+	}
+	stat, err := os.Stdout.Stat()
+	if err != nil {
+		return
+	}
+	if stat.Mode()&os.ModeCharDevice != 0 {
+		return
+	}
+	fmt.Fprintf(a.Stderr, "nudge: %s stdout is piped but no --limit/-L (or --range/--pattern) set; ae has server-side bounds; do not | head/tail/grep. Disable: AE_NO_NUDGE=1 or output.nudge_on_pipe=false in config.\n", verb)
+}
