@@ -2,6 +2,15 @@
 
 All notable changes to agented are documented here. The format is based on [Keep a Changelog](https://keepachangelog.com), and the project follows [Semantic Versioning](https://semver.org).
 
+## [v0.3.8] - 2026-04-30
+
+### Release engineering
+
+- **Migrated to `homebrew_casks:` from deprecated `brews:`**. goreleaser deprecated formula generation in v2.10 in favor of casks. The cask path also gives us `postflight` hooks: a one-line `xattr -dr com.apple.quarantine` clears the macOS Sequoia provenance attribute that was SIGKILL-ing the brew-installed binary on first run. v0.3.7's formula at `frane/homebrew-tap/agented.rb` should be deleted; v0.3.8 ships the cask at `frane/homebrew-tap/Casks/agented.rb`.
+- Cask `binary:` field renamed to `binaries: [ae]` per goreleaser v2.12.6 deprecation.
+
+Same binary as v0.3.7; release-engineering only.
+
 ## [v0.3.7] - 2026-04-30
 
 ### Release engineering

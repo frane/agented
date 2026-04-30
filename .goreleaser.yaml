@@ -75,23 +75,34 @@ changelog:
       order: 999
 
 
-brews:
+homebrew_casks:
   - name: agented
     repository:
       owner: frane
       name: homebrew-tap
       branch: main
       token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
-    # Skip the brew step entirely when the secret is missing, so cutting a
-    # release does not fail just because the tap is not yet provisioned.
+    # Skip the cask publish entirely when the secret is missing, so cutting
+    # a release does not fail just because the tap is not provisioned yet.
     skip_upload: '{{ if eq .Env.HOMEBREW_TAP_GITHUB_TOKEN "" }}true{{ else }}auto{{ end }}'
+    directory: Casks
     homepage: "https://github.com/frane/agented"
     description: "Stateful, persistent text editor for LLM agents (verb-based, SQLite undo tree)."
     license: "Apache-2.0"
-    install: |
-      bin.install "ae"
-    test: |
-      assert_match "ae version", shell_output("#{bin}/ae --version")
+    url:
+      # Avoid the homebrew-audit warning that download domain (github.com)
+      # differs from the homepage domain. Same repo so this is honest.
+      verified: github.com/frane/agented
+    binaries: [ae]
+    hooks:
+      post:
+        install: |
+          if OS.mac?
+            # Release tarballs are not codesigned. Strip the quarantine xattr
+            # so macOS Sequoia Gatekeeper does not SIGKILL the binary on first
+            # invocation. See https://github.com/frane/agented v0.3.6 notes.
+            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/ae"]
+          end
     commit_author:
       name: agented-release
       email: release@agented.dev
