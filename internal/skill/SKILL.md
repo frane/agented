@@ -1,6 +1,6 @@
 ---
 name: agented
-version: 1.2.1
+version: 1.2.2
 binary: ae
 description: Stateful, persistent text editor for LLM agents. Undo tree, marks, annotations, transactions. Backed by SQLite.
 ---
@@ -296,6 +296,8 @@ When `ide.enabled: true` is set in `.agented/config.json`, IDE features are avai
 - `ae find --symbol <name>` (`ae / -s`) finds where a symbol is defined
 - `ae find --references <symbol>` (`ae / -R`) finds all use sites
 - `ae find --definition <symbol> --at <file>:<line>:<col>` (`ae / -D -A`) resolves a definition at a cursor position
+
+When IDE mode is on, prefer these over `grep`/Glob for structural questions: "where is X defined", "who calls X", "what does this file expose". `ae find -R Foo` is one structured call with usage classification (call/read/write/import/definition); a grep is text-only and forces you to disambiguate matches in your head. The trained `grep -rn` reflex still applies for free-text searches over comments, strings, and TODOs; structural queries belong on the LSP.
 
 You don't need to manage the daemon yourself. If config has IDE enabled, ae ensures the daemon is running when you invoke any IDE-relevant verb. The first invocation in a session may take a second or two while the LSP starts up; subsequent calls are fast.
 
