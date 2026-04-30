@@ -10,10 +10,12 @@ import (
 )
 
 // editFlags holds the common flags for replace/insert/delete.
+// editFlags holds the common flags for replace/insert/delete.
 type editFlags struct {
 	expect, text, textFile string
 	fromStdin              bool
 	noTx, autoOpen         bool
+	allowEmpty             bool
 }
 
 func attachEditFlags(c *cobra.Command, ef *editFlags) {
@@ -23,6 +25,7 @@ func attachEditFlags(c *cobra.Command, ef *editFlags) {
 	c.Flags().BoolVarP(&ef.fromStdin, "from-stdin", "i", false, "Read text from stdin")
 	c.Flags().BoolVarP(&ef.noTx, "no-transaction", "T", false, "Bypass current transaction owner enforcement")
 	c.Flags().BoolVar(&ef.autoOpen, "auto-open", true, "Auto-open the file if not registered (default true)")
+	c.Flags().BoolVarP(&ef.allowEmpty, "allow-empty", "e", false, "Permit empty content from --from-stdin / --text-file (otherwise rejected; use ae delete instead)")
 }
 
 // for replace, --with is the inline text; we still allow --text-file/--from-stdin.
@@ -33,6 +36,7 @@ func attachReplaceFlags(c *cobra.Command, ef *editFlags) {
 	c.Flags().BoolVarP(&ef.fromStdin, "from-stdin", "i", false, "Read replacement from stdin")
 	c.Flags().BoolVarP(&ef.noTx, "no-transaction", "T", false, "Bypass current transaction owner enforcement")
 	c.Flags().BoolVar(&ef.autoOpen, "auto-open", true, "Auto-open the file if not registered (default true)")
+	c.Flags().BoolVarP(&ef.allowEmpty, "allow-empty", "e", false, "Permit empty content from --from-stdin / --text-file (otherwise rejected; use ae delete instead)")
 }
 
 func newReplaceCmd(a *App) *cobra.Command {
@@ -49,7 +53,7 @@ func newReplaceCmd(a *App) *cobra.Command {
 		Short:   "Replace a line range, or with --pattern, every regex match",
 		Args:    cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
-			text, err := readTextInput(a.Stdin, ef.text, ef.textFile, ef.fromStdin)
+			text, err := readTextInput(a.Stdin, ef.text, ef.textFile, ef.fromStdin, ef.allowEmpty)
 			if err != nil {
 				return wrapErrCode(1, err)
 			}
@@ -108,7 +112,7 @@ func newInsertCmd(a *App) *cobra.Command {
 		Short:   "Insert text after a line (0 = start of file)",
 		Args:    cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
-			text, err := readTextInput(a.Stdin, ef.text, ef.textFile, ef.fromStdin)
+			text, err := readTextInput(a.Stdin, ef.text, ef.textFile, ef.fromStdin, ef.allowEmpty)
 			if err != nil {
 				return wrapErrCode(1, err)
 			}

@@ -109,6 +109,22 @@ func (e *Engine) autoSaveAfterEdit(fi *store.FileInfo, head string) (saved bool,
 	if err := atomicfile.WriteSimple(abs, []byte(head), fmode); err != nil {
 		return false, err
 	}
+	// Post-rename verify: stat and confirm size matches what we just wrote.
+	// Catches the concurrent-writer race where another actor's atomic-rename
+	// lands after ours: size will be wrong, hash will mismatch. v0.3.2 swapped
+	// atomicfile.Editor.Write (which read back and byte-compared) for
+	// WriteSimple to win 2.2x on the bench. The stat is a cheaper check that
+	// keeps the speedup while restoring drift detection.
+	want := len(head)
+	if st, err := os.Stat(abs); err == nil && st.Size() != int64(want) {
+		// Disk size disagrees with what we wrote. Re-read and verify hash; if
+		// content was clobbered, surface the issue rather than silently
+		// claiming saved=true.
+		got, _ := os.ReadFile(abs)
+		if string(got) != head {
+			return false, fmt.Errorf("autosave verify: disk content (size=%d) differs from head (size=%d) after rename; concurrent writer detected", len(got), want)
+		}
+	}
 	// Record the post-save stamp so the next autoLoadIfDrifted call can
 	// skip the read+hash when (mtime, size) is unchanged.
 	if s, ok := diskStamp(abs); ok {

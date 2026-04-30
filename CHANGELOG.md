@@ -2,6 +2,21 @@
 
 All notable changes to agented are documented here. The format is based on [Keep a Changelog](https://keepachangelog.com), and the project follows [Semantic Versioning](https://semver.org).
 
+## [v0.3.6] - 2026-04-30
+
+### Fixes
+
+- **Autosave race detection.** v0.3.2 swapped `atomicfile.Editor.Write` (with backup + readback verify) for `atomicfile.WriteSimple` to win 2.2× on the bench. The verify step would have caught "rename succeeded but disk content does not match what we wrote", which is exactly the symptom an active multi-actor session reported: matches=N, new state_token, but disk lagged. Added a stat-after-rename: if disk size disagrees with `len(head)`, re-read and confirm; on mismatch surface a clear error rather than silently claiming saved=true. Keeps the v0.3.2 speedup for the common case (single fsync, no readback) and only pays the read on the rare disagreement path.
+- **Skill-version warning rate-limit.** "warning: installed skill version X differs from binary Y" used to fire on every command. Now writes a `.agented/.skill_warn` marker keyed on the `(installed, binary)` pair and skips subsequent warnings until either side changes. One warning per workspace per version drift, not one per call.
+- **Empty-content guard on `--from-stdin` / `--text-file`.** When the resolved input yields zero bytes, write verbs (`replace`, `insert`, `apply`) now error with a clear message: "pipe content or use `ae delete` to remove a range". Catches the agent-wiring bug where an exec wrapper drops stdin and the underlying replace turns into a destructive delete. Pass `--allow-empty` / `-e` to override.
+- **Makefile install on macOS Sequoia.** `make install` previously used `cp`, which preserves the `com.apple.provenance` xattr. The resulting binary at `~/.local/bin/ae` got SIGKILL-ed by Gatekeeper on Apple Silicon. Switched to `install -m 755` plus a best-effort `xattr -c` to clear residual attrs.
+
+### Tests
+
+- `TestReadTextInput*` (5 cases): empty stdin, empty file, --allow-empty bypass, non-empty unaffected.
+- `TestShouldEmitSkillWarn`, `TestShouldEmitSkillWarnNoEngine`: marker rate-limit + nil-engine fallback.
+- `TestAutoSaveVerifyHappyPath`: happy-path regression so the new verify does not produce false positives.
+
 ## [v0.3.5] - 2026-04-30
 
 ### Features

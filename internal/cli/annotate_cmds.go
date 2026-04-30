@@ -64,7 +64,7 @@ func runAnnotAdd(a *App, path string, rest []string) error {
 			stdin = true
 		}
 	}
-	body, err := readTextInput(a.Stdin, text, file, stdin)
+	body, err := readTextInput(a.Stdin, text, file, stdin, false)
 	if err != nil {
 		return wrapErrCode(1, err)
 	}

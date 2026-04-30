@@ -58,7 +58,8 @@ release:
 
 install: build
 	@mkdir -p $(INSTALL_DIR)
-	cp $(BINARY) $(INSTALL_DIR)/$(BINARY)
+	install -m 755 $(BINARY) $(INSTALL_DIR)/$(BINARY)
+	@if command -v xattr >/dev/null 2>&1 ; then xattr -c $(INSTALL_DIR)/$(BINARY) 2>/dev/null || true ; fi
 	@echo "installed to $(INSTALL_DIR)/$(BINARY)"
 
 clean:

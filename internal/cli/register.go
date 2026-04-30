@@ -67,7 +67,7 @@ func registerVerbs(a *App, root *cobra.Command) {
 // readTextInput resolves the text source for write verbs. Sources in
 // precedence order: --text inline, --text-file, --from-stdin, or piped
 // stdin auto-detected when no flag is set. Multiple flags is an error.
-func readTextInput(stdin io.Reader, text, file string, fromStdin bool) (string, error) {
+func readTextInput(stdin io.Reader, text, file string, fromStdin, allowEmpty bool) (string, error) {
 	count := 0
 	if text != "" {
 		count++
@@ -89,12 +89,18 @@ func readTextInput(stdin io.Reader, text, file string, fromStdin bool) (string, 
 		if err != nil {
 			return "", err
 		}
+		if len(b) == 0 && !allowEmpty {
+			return "", fmt.Errorf("--text-file %q is empty; pipe content or use `ae delete` to remove a range. Pass --allow-empty/-e to override", file)
+		}
 		return string(b), nil
 	}
 	if fromStdin || isPipedStdin(stdin) {
 		b, err := io.ReadAll(stdin)
 		if err != nil {
 			return "", err
+		}
+		if len(b) == 0 && !allowEmpty {
+			return "", errors.New("--from-stdin produced 0 bytes; pipe content or use `ae delete` to remove a range. Pass --allow-empty/-e to override")
 		}
 		return string(b), nil
 	}

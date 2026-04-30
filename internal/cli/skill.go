@@ -314,14 +314,37 @@ func checkSkillVersion(a *App) error {
 	case skill.MatchSame:
 		return nil
 	case skill.MatchPatchOrMinor:
-		fmt.Fprintf(a.Stderr, "warning: installed skill version %s differs from binary %s; run `ae skill upgrade`\n", v, skill.Version)
+		if shouldEmitSkillWarn(a, v, skill.Version) {
+			fmt.Fprintf(a.Stderr, "warning: installed skill version %s differs from binary %s; run `ae skill upgrade`\n", v, skill.Version)
+		}
 		return nil
 	case skill.MatchMajor:
 		if level == "any" {
-			fmt.Fprintf(a.Stderr, "warning: installed skill version %s major-mismatches binary %s; run `ae skill upgrade`\n", v, skill.Version)
+			if shouldEmitSkillWarn(a, v, skill.Version) {
+				fmt.Fprintf(a.Stderr, "warning: installed skill version %s major-mismatches binary %s; run `ae skill upgrade`\n", v, skill.Version)
+			}
 			return nil
 		}
 		return fmt.Errorf("skill out of date: installed %s, binary %s; run `ae skill upgrade`", v, skill.Version)
 	}
 	return nil
+}
+
+// shouldEmitSkillWarn rate-limits the per-workspace skill version warning.
+// Writes a marker at .agented/.skill_warn containing the current
+// (installed, binary) version pair. Subsequent calls with the same pair
+// skip the warning. The marker is invalidated when either version
+// changes or when the file is removed.
+func shouldEmitSkillWarn(a *App, installed, binary string) bool {
+	if a.engine == nil || a.engine.DBPath == "" {
+		return true
+	}
+	wsDir := filepath.Dir(a.engine.DBPath)
+	marker := filepath.Join(wsDir, ".skill_warn")
+	want := installed + ":" + binary
+	if data, err := os.ReadFile(marker); err == nil && string(data) == want {
+		return false
+	}
+	_ = os.WriteFile(marker, []byte(want), 0o644)
+	return true
 }
