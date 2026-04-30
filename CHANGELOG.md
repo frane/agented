@@ -2,6 +2,37 @@
 
 All notable changes to agented are documented here. The format is based on [Keep a Changelog](https://keepachangelog.com), and the project follows [Semantic Versioning](https://semver.org).
 
+## [v0.3.0] - 2026-04-30
+
+### Features
+
+- **IDE mode (opt-in).** Set `ide.enabled: true` in `.agented/config.json` and `ae` exposes language-server-backed verbs through a daemon (`ae lsp`). Ships with `gopls` validated; `pyright`, `typescript-language-server`, and `rust-analyzer` are config-driven but not yet tested. Off by default — v0.2 behaviour is byte-identical when `ide.enabled` is false.
+  - `ae symbols [path]` (`ae sy`) lists symbols in a file or workspace
+  - `ae find --symbol <name>` (`-s`) finds where a symbol is defined
+  - `ae find --references <symbol>` (`-R`) finds all use sites with usage classification (call/read/write/import/definition)
+  - `ae find --definition <symbol> --at <file>:<line>:<col>` (`-D -A`) resolves a definition at a cursor position
+  - Mutating verbs (`open`, `view`, `save`, `replace`, `insert`, `delete`, `move`, `apply`) emit `diag` lines from cached LSP diagnostics
+  - `ae lsp [--background] [status] [stop] [logs]` manages the daemon; auto-start kicks in on first IDE-relevant verb when config has `ide.auto_start_daemon: true` (default)
+  - Per-call severity filter via `--diagnostics`/`-G` (`errors|warnings|all|none`); `--no-diagnostics`/`-N` for suppression; `--no-auto-lsp` to skip auto-spawn
+- **2.2× speedup on write-heavy scenarios.** Profile showed `autoSaveAfterEdit` was paying 2-3 fsyncs per edit inside the heavyweight `atomicfile.Editor.Write` (backup + readback verify). For autosave the SQLite store is the durable record, so the lite path `atomicfile.WriteSimple` (single temp+fsync+rename) is sufficient. Bench medians: 50 sequential replaces 750ms → 325ms; 1000 edits + reconstruction 15.4s → 6.8s; 30 undo+redo 380ms → 178ms. Read-only paths and one-shot installers (`ae skill install`, `ae permissions install`) unchanged.
+
+### Documentation
+
+- **SKILL.md 1.2.2.** New "IDE mode" section with severity/kind/usage vocabularies and a "prefer LSP over grep for structural queries when ide.enabled" rule. The first-touch rule now spells out that `ae open <new-path>` is the file-creation primitive (auto-creates an empty file; no `touch` or `--create` needed). Two new anti-patterns: don't infer file health from absence of `diag` lines; don't try to start `ae lsp` yourself unless authorized.
+- **README** gained an "IDE mode (optional)" section documenting the opt-in flow.
+
+### Schema
+
+- **SQLite schema v3** adds `diagnostics` and `lsp_status` tables. Migration `003_lsp.sql`. Existing v1/v2 workspaces upgrade automatically on first open with the v0.3 binary; downgrading the binary requires manual schema rollback.
+
+### Tests
+
+- New regression tests for the three bugs caught while dogfooding v0.3 on the agented repo:
+  - `TestDecodeRequestDoesNotBlockOnNonNotify`: simulates a live socket via `io.Pipe` (the buffer-based round-trip didn't catch this)
+  - `TestReplaceDiagnosticsRejectsZeroFileID`: pins the FK guard
+  - `TestReplaceDiagnosticsClearsAllRowsOnNilEditID`: pins the legacy-row cleanup behaviour
+  - `TestEvalSymlinksFallbackResolvesTmp`: pins the macOS `/tmp` → `/private/tmp` invariant
+
 ## [v0.2.3] - 2026-04-29
 
 ### Features
