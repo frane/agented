@@ -101,7 +101,12 @@ func (e *Engine) autoSaveAfterEdit(fi *store.FileInfo, head string) (saved bool,
 	if err != nil {
 		return false, err
 	}
-	if _, err := atomicfile.New(abs).Write([]byte(head)); err != nil {
+	// Preserve mode on existing files; default 0644 on first write.
+	fmode := os.FileMode(0o644)
+	if st, err := os.Stat(abs); err == nil {
+		fmode = st.Mode().Perm()
+	}
+	if err := atomicfile.WriteSimple(abs, []byte(head), fmode); err != nil {
 		return false, err
 	}
 	// Record the post-save stamp so the next autoLoadIfDrifted call can

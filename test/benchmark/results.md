@@ -1,6 +1,6 @@
 # ae benchmark results
 
-Generated 2026-04-29 11:41:22 UTC by `make bench` (cmd/ae-bench).
+Generated 2026-04-30 13:56:10 UTC by `make bench` (cmd/ae-bench).
 
 **Honest framing.** This suite measures ae's Engine API in-process across representative editing scenarios. Each scenario runs once per invocation; durations vary; storage growth is exact (SQLite file + WAL + SHM byte deltas).
 
@@ -8,11 +8,11 @@ Comparison to Claude Code's `Read`/`Edit`/`Write` is intentionally not in this r
 
 | Scenario | Ops | Wall (ms) | DB growth (bytes) | Notes |
 |----------|-----|-----------|-------------------|-------|
-| open + 1 small replace (100-line file) | 1 | 7 | 90640 | - |
-| open + 10 sequential replaces | 10 | 7 | 424360 | - |
-| open + 50 sequential replaces | 50 | 39 | 1928160 | - |
-| ae apply 10-op batch (one transaction) | 10 | 9 | 477920 | - |
-| ae regex replace across 200-line file | 200 | 7 | 103000 | - |
-| reconstruct head after 1000 sequential edits | 1001 | 1158 | 4553624 | 1000 edits + 1 reconstruction view |
-| undo 10 then redo 10 (linear) | 30 | 10 | 671560 | 10 edits + 10 undos + 10 redos |
-| open + status + view + close | 4 | 4 | 82400 | - |
+| open + 1 small replace (100-line file) | 1 | 9 | 90640 | - |
+| open + 10 sequential replaces | 10 | 58 | 424360 | - |
+| open + 50 sequential replaces | 50 | 325 | 1928160 | - |
+| ae apply 10-op batch (one transaction) | 10 | 83 | 490280 | - |
+| ae regex replace across 200-line file | 200 | 5 | 103000 | - |
+| reconstruct head after 1000 sequential edits | 1001 | 6859 | 4553504 | 1000 edits + 1 reconstruction view |
+| undo 10 then redo 10 (linear) | 30 | 197 | 671560 | 10 edits + 10 undos + 10 redos |
+| open + status + view + close | 4 | 6 | 82400 | - |
