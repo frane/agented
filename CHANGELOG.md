@@ -2,6 +2,22 @@
 
 All notable changes to agented are documented here. The format is based on [Keep a Changelog](https://keepachangelog.com), and the project follows [Semantic Versioning](https://semver.org).
 
+## [v0.3.1] - 2026-04-30
+
+### Fixes
+
+- **Cross-platform build.** v0.3.0 release-build failed on `windows_amd64` because `internal/cli/lsp.go` used `syscall.Kill` and `syscall.SysProcAttr.Setsid`, both Unix-only. Split daemon-spawn into `lsp_unix.go` (Setsid) and `lsp_windows.go` (`CreationFlags = DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP`). `processAlive` likewise split: kill(0) on Unix, conservative on Windows.
+- **`ae lsp stop`** now uses `os.Process.Signal(os.Interrupt)` instead of `syscall.Kill`. Same effect on Unix; works on Windows where `syscall.Kill` is undefined.
+
+### IDE mode platform support
+
+- **Native Windows 10 1803+ supported.** Unix sockets work on Windows since 1803 (April 2018) via Go's `net.Listen("unix", ...)`. The daemon spawns detached via `CreationFlags`. Older Windows: use WSL (the `linux_amd64`/`linux_arm64` binaries run there with full IDE support).
+- macOS, Linux, WSL: unchanged.
+
+### Documentation
+
+- README and SKILL.md (1.2.3): IDE mode section gained concrete verb examples with sample output, daemon subcommand reference, and a "prefer LSP over grep for structural queries" worked example. Earlier prose-only treatment was undersold.
+
 ## [v0.3.0] - 2026-04-30
 
 ### Features

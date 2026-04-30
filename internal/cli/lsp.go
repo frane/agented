@@ -5,11 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -117,7 +115,11 @@ func newLSPStopCmd(a *App) *cobra.Command {
 			if err != nil || pid <= 0 {
 				return wrapErrCode(1, errors.New("invalid pid file"))
 			}
-			if err := syscall.Kill(pid, syscall.SIGTERM); err != nil {
+		proc, err := os.FindProcess(pid)
+			if err != nil {
+				return wrapErr(err)
+			}
+			if err := proc.Signal(os.Interrupt); err != nil {
 				return wrapErr(err)
 			}
 			fmt.Fprintf(a.Stdout, "lsp\tstop_signal_sent\tpid=%d\n", pid)
@@ -188,43 +190,6 @@ func workspaceRootFromDir(wsDir string) string {
 		return wsDir
 	}
 	return filepath.Dir(abs)
-}
-
-// spawnDaemonBackground re-execs the current binary with the same arguments
-// minus --background, writing the daemon's stdout/stderr to lsp.log. Waits up
-// to 5s for the daemon's status row to flip to ready.
-func spawnDaemonBackground(wsDir string, stdoutWriter interface{ Write([]byte) (int, error) }) error {
-	logPath := lsp.LogPath(wsDir)
-	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
-	if err != nil {
-		return err
-	}
-	defer logFile.Close()
-	exe, err := os.Executable()
-	if err != nil {
-		return err
-	}
-	cmd := exec.Command(exe, "lsp")
-	cmd.Stdin = nil
-	cmd.Stdout = logFile
-	cmd.Stderr = logFile
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
-	if err := cmd.Start(); err != nil {
-		return err
-	}
-	// Wait briefly for readiness (status row flips). 5s ceiling per spec.
-	deadline := time.Now().Add(5 * time.Second)
-	for time.Now().Before(deadline) {
-		if _, err := os.Stat(lsp.SocketPath(wsDir)); err == nil {
-			fmt.Fprintf(stdoutWriter, "lsp\tbackground\tpid=%d\n", cmd.Process.Pid)
-			_ = cmd.Process.Release()
-			return nil
-		}
-		time.Sleep(100 * time.Millisecond)
-	}
-	fmt.Fprintf(stdoutWriter, "lsp\tbackground_timeout\tpid=%d\n", cmd.Process.Pid)
-	_ = cmd.Process.Release()
-	return nil
 }
 
 // ensureDaemon checks the daemon status and auto-starts it (in background)

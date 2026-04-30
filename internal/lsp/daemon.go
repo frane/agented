@@ -534,16 +534,8 @@ func classifyUsage(name, ctxLine string) string {
 }
 
 // processAlive checks whether pid is a running process, OS-portable.
-func processAlive(pid int) (bool, error) {
-	p, err := os.FindProcess(pid)
-	if err != nil {
-		return false, err
-	}
-	if err := p.Signal(syscall.Signal(0)); err != nil {
-		return false, nil
-	}
-	return true, nil
-}
+// processAlive checks whether pid is a running process. The implementation
+// is platform-specific (see processalive_unix.go / processalive_windows.go).
 
 // Connect dials the daemon socket. Returns ErrUnavailable when the daemon
 // isn't running so callers can return lsp_unavailable to the agent.
