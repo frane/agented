@@ -68,7 +68,7 @@ clean:
 
 # ClawHub publish workflow.
 #
-# `make stage-skill`   stages a clean publish folder at dist/clawhub/skill/
+# `make stage-skill`   stages a clean publish folder at dist/clawhub/agented/
 #                      with SKILL.md, LICENSE, CHANGELOG.md, README.md.
 #                      No Go source, no clawhub-irrelevant files.
 #
@@ -77,7 +77,7 @@ clean:
 #                      Requires `clawhub login` first.
 #
 # Override the version with: make publish-skill PUBLISH_SKILL_VERSION=1.3.0
-PUBLISH_SKILL_DIR     := dist/clawhub/skill
+PUBLISH_SKILL_DIR     := dist/clawhub/agented
 PUBLISH_SKILL_VERSION ?= $(shell awk '/^version:/{print $$2; exit}' internal/skill/SKILL.md)
 
 stage-skill:

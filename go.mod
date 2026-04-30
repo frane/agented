@@ -3,6 +3,7 @@ module github.com/frane/agented
 go 1.25.5
 
 require (
+	github.com/alecthomas/chroma/v2 v2.24.0
 	github.com/mark3labs/mcp-go v0.49.0
 	github.com/spf13/cobra v1.10.2
 	modernc.org/sqlite v1.50.0
@@ -10,7 +11,6 @@ require (
 )
 
 require (
-	github.com/alecthomas/chroma/v2 v2.24.0 // indirect
 	github.com/dlclark/regexp2 v1.12.0 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/google/jsonschema-go v0.4.2 // indirect
