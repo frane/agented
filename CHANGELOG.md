@@ -2,6 +2,15 @@
 
 All notable changes to agented are documented here. The format is based on [Keep a Changelog](https://keepachangelog.com), and the project follows [Semantic Versioning](https://semver.org).
 
+## [v0.3.7] - 2026-04-30
+
+### Release engineering
+
+- **Homebrew tap.** `brew tap frane/tap && brew install agented` now installs the signed/notarized release binaries; `brew upgrade` picks up future releases automatically. The goreleaser `brews:` block generates `Formula/agented.rb`, computes SHA256s, and commits to `frane/homebrew-tap` on every tag. macOS Sequoia users get the signed binary path with no SIGKILL surprises.
+- **`make publish-skill` now declares brew as the preferred install** in the openclaw metadata block injected at stage time. Two install entries are emitted in order: `kind: brew` (tap `frane/tap`, formula `agented`), then `kind: go` as a fallback for users without brew. ClawHub's runtime tries them in order.
+
+No code or behaviour changes to the binary itself; same build as v0.3.6.
+
 ## [v0.3.6] - 2026-04-30
 
 ### Fixes
