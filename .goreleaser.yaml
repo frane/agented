@@ -74,6 +74,32 @@ changelog:
     - title: Others
       order: 999
 
+
+brews:
+  - name: agented
+    repository:
+      owner: frane
+      name: homebrew-tap
+      branch: main
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    # Skip the brew step entirely when the secret is missing, so cutting a
+    # release does not fail just because the tap is not yet provisioned.
+    skip_upload: '{{ if eq .Env.HOMEBREW_TAP_GITHUB_TOKEN "" }}true{{ else }}auto{{ end }}'
+    homepage: "https://github.com/frane/agented"
+    description: "Stateful, persistent text editor for LLM agents (verb-based, SQLite undo tree)."
+    license: "Apache-2.0"
+    install: |
+      bin.install "ae"
+    test: |
+      assert_match "ae version", shell_output("#{bin}/ae --version")
+    commit_author:
+      name: agented-release
+      email: release@agented.dev
+    caveats: |
+      ae is a stateful editor for LLM agents. After install, run:
+        ae skill install
+      to drop the SKILL.md into your Claude/Codex/Cursor skills directory.
+
 release:
   github:
     owner: frane

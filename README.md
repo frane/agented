@@ -75,6 +75,13 @@ curl -sSL https://raw.githubusercontent.com/frane/agented/master/install.sh | sh
 
 That's the typical install path: detects your platform, downloads the matching binary from GitHub Releases, verifies the checksum, drops it in `~/.local/bin/` or `/usr/local/bin/`. Set `AE_INSTALL_DIR` to override the destination, `AE_VERSION` to pin a specific version.
 
+On macOS or Linux with Homebrew, the tap gives you signed/notarized release binaries with `brew upgrade` for free:
+
+```
+brew tap frane/tap
+brew install agented
+```
+
 If you have Go installed and prefer compiling from source:
 
 ```

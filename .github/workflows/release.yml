@@ -35,3 +35,7 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Optional. When set, goreleaser pushes the brew formula to
+          # frane/homebrew-tap. Missing token is fine: brews.skip_upload
+          # in .goreleaser.yaml short-circuits the brew step.
+          HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
