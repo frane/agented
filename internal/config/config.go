@@ -29,6 +29,7 @@ type Config struct {
 	MCP         MCPCfg         `json:"mcp"`
 	Logging     LoggingCfg     `json:"logging"`
 	Workspace   WorkspaceCfg   `json:"workspace"`
+	IDE         IDECfg         `json:"ide"`
 }
 
 // WorkspaceCfg controls workspace discovery (used by Locate).
@@ -38,6 +39,36 @@ type WorkspaceCfg struct {
 	// "true": also auto-create at cwd when no project root is detected.
 	// "false": disable tier-2 entirely (require explicit `ae init`).
 	AutoCreate string `json:"auto_create"`
+}
+
+// IDECfg controls v0.3 IDE/LSP mode. Off by default.
+//
+// When Enabled is true, ae spawns a long-running daemon (ae lsp) that
+// hosts language servers, caches diagnostics in SQLite, and answers
+// symbol/reference/definition queries via a Unix socket. Mutating verbs
+// pick up the cached diagnostics and emit them as `diag` lines.
+type IDECfg struct {
+	Enabled          bool                       `json:"enabled"`
+	AutoStartDaemon  bool                       `json:"auto_start_daemon"`
+	Languages        map[string]IDELanguageCfg  `json:"languages"`
+	Extensions       map[string]string          `json:"extensions"`
+	Diagnostics      IDEDiagnosticsCfg          `json:"diagnostics"`
+}
+
+// IDELanguageCfg pins one language server.
+type IDELanguageCfg struct {
+	Server    string   `json:"server"`
+	Args      []string `json:"args,omitempty"`
+	AutoStart bool     `json:"auto_start"`
+}
+
+// IDEDiagnosticsCfg controls how diagnostics surface on mutating verbs.
+type IDEDiagnosticsCfg struct {
+	// Default is one of: errors | warnings | all | none. Per-call override
+	// via --diagnostics / -G.
+	Default        string `json:"default"`
+	MaxPerResponse int    `json:"max_per_response"`
+	CacheTTL       string `json:"cache_ttl"`
 }
 
 type Concurrency struct {

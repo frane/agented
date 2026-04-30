@@ -43,5 +43,27 @@
   "logging": {
     "level": "info",
     "destination": "stderr"
+  },
+  "ide": {
+    "enabled": false,
+    "auto_start_daemon": true,
+    "languages": {
+      "go":         { "server": "gopls", "auto_start": true },
+      "typescript": { "server": "typescript-language-server", "args": ["--stdio"], "auto_start": false },
+      "rust":       { "server": "rust-analyzer", "auto_start": false },
+      "python":     { "server": "pyright-langserver", "args": ["--stdio"], "auto_start": false }
+    },
+    "extensions": {
+      ".go":  "go",
+      ".ts":  "typescript",
+      ".tsx": "typescript",
+      ".rs":  "rust",
+      ".py":  "python"
+    },
+    "diagnostics": {
+      "default": "errors",
+      "max_per_response": 50,
+      "cache_ttl": "5m"
+    }
   }
 }

@@ -14,7 +14,7 @@ import (
 var migrationsFS embed.FS
 
 // CurrentSchemaVersion is the highest schema version this binary knows.
-const CurrentSchemaVersion = 2
+const CurrentSchemaVersion = 3
 
 // Migrate applies any pending migrations from the embedded migrations
 // directory in numeric order, each in its own transaction.
