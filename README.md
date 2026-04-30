@@ -26,6 +26,8 @@ The state token is the small primitive that makes the rest cheap. Every state of
 
 Annotations are the cross-session memory. Per-file notes that persist across processes, across agents, across vendors. `ae open` returns active annotations inline, so reading them is automatic. A Codex session at 4pm picks up where the Claude Code session at 11am stopped, with the annotations as the handoff.
 
+A daemon (`ae lsp`) hosts language servers when you set `ide.enabled: true`. With it on, `ae symbols`, `ae find --references`, and `ae find --definition` answer structural questions through the LSP instead of regex, and mutating verbs pick up `diag` lines from the language server's analysis. Off by default; v0.2 behaviour is byte-identical when disabled. See "IDE mode (optional)" below.
+
 None of which makes this an editor for humans. There is no TUI, no keybindings, no vim mode, no emacs mode, no syntax highlighting. If you want to edit code with your hands you already have whatever you've been using, so don't switch. It's also not a version control system or a database. The history tree is for editing-session continuity, not for replacing git. Save things to disk, commit them, push them, as usual.
 
 
@@ -191,6 +193,54 @@ Defaults are good enough that you don't need to touch any of this on day one.
 `ae lsp` runs a daemon that hosts language servers (gopls today; pyright, typescript-language-server, and others as their integrations stabilize) and exposes their analysis to the agent through additional verbs. Symbol navigation, reference finding, definitions, plus diagnostics riding along on save and edit responses.
 
 The daemon is opt-in. Set `ide.enabled: true` in `.agented/config.json`, configure the languages you want under `ide.languages`, and `ae` handles the rest: the daemon starts on first IDE-relevant verb in a session, hosts the LSPs, writes diagnostics to the workspace's SQLite as it gets them, and tears down on `ae lsp stop`.
+
+### The four verbs
+
+```sh
+ae sy internal/lsp/wire.go
+# sym  type    internal/lsp/wire.go:24:6   Request
+# sym  func    internal/lsp/wire.go:61:6   DecodeRequest
+# sym  func    internal/lsp/wire.go:96:6   EncodeResponses
+# ...
+
+ae find -s DecodeRequest                     # where is it defined?
+# def  internal/lsp/wire.go:61:6   DecodeRequest   func
+
+ae find -R DecodeRequest                     # who calls it?
+# ref  internal/lsp/wire.go:68:10  call  return DecodeRequest(r)
+# ref  internal/lsp/daemon.go:293:15 call req, err := DecodeRequest(r)
+# ref  internal/lsp/wire_test.go:23:15 call got, err := DecodeRequest(...)
+
+ae find -D DecodeRequest -A foo.go:120:15    # cursor-anchored definition
+# def  internal/lsp/wire.go:61:6   DecodeRequest
+```
+
+`ae find -R` returns one structured line per use site with usage classification (`call` / `read` / `write` / `import` / `definition` / `other`) and the matching line of code. Compare to `grep -rn "DecodeRequest"`: same answer shape, but ae's is bound to the actual symbol the LSP knows about, not text matches.
+
+### Diagnostics
+
+When IDE mode is on, mutating verbs (`ae save`, `ae replace`, `ae apply`, ...) include `diag` lines in their responses when the language server has findings cached for the file:
+
+```
+ok    state_token=ab12cd34
+diag  warn   foo.go:89:4    unused variable x       lint
+diag  error  foo.go:47:12   undefined: bar          compile
+```
+
+Severities are fixed: `error | warn | info | hint`. Per-call filter via `--diagnostics`/`-G` (`errors|warnings|all|none`); `--no-diagnostics`/`-N` to suppress. Default in config is `errors`. The absence of `diag` lines means *one* of: no findings, LSP hasn't analyzed yet, language not configured, daemon not running. It does not mean "the file is clean".
+
+### The daemon
+
+You don't normally manage it yourself. With `ide.enabled: true` and `ide.auto_start_daemon: true` (default), the first IDE-relevant verb in a session starts the daemon in the background. Subsequent calls are fast.
+
+```sh
+ae lsp status                # one line per language: state, pid, last_error
+ae lsp --background          # explicit background spawn
+ae lsp stop                  # graceful shutdown
+ae lsp logs                  # tail .agented/lsp.log
+```
+
+`--no-auto-lsp` on any verb skips the auto-spawn (power-user safety).
 
 Existing verbs keep working with or without IDE mode. When the daemon is up, mutating verbs pick up diagnostic lines in their responses; when it's down, they don't. The agent never has to know whether the daemon is running for normal editing flow.
 

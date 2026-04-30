@@ -1,6 +1,6 @@
 ---
 name: agented
-version: 1.2.2
+version: 1.2.3
 binary: ae
 description: Stateful, persistent text editor for LLM agents. Undo tree, marks, annotations, transactions. Backed by SQLite.
 ---
@@ -90,6 +90,7 @@ These are the operations that motivate reaching for `ae` over the built-ins.
 | `mark get` | -    | `<path> <name>`             | `name\tline\tsnapped\t...`| Jump back to a known anchor           |
 | `annotate list` | -| `<path>`                       | `id\tts\tactor\tcontent`  | Recall notes from prior sessions      |
 | `show`   | -     | `<path> [--edit <id>] [--no-color]` | colored, syntax-highlighted unified diff | Display a change to the user. NOT for tool result chains; lean tab format is the default everywhere else |
+| `symbols` | `sy` | `[<path>] [--kind <k>] [--pattern <re>]` | `sym\t<kind>\t<file>:<line>:<col>\t<name>` | List symbols (file or workspace). IDE mode only; falls through to `lsp_unavailable` when daemon is off |
 
 ## Writing verbs (use `--expect <state_token>`)
 
@@ -286,6 +287,29 @@ ae merge auth.go -l 47 -l 52
 ae merge auth.go -l 47 -l 52 -R '20:22=a' -R '47:47=b'
 # all conflicts resolved => commit a merge edit; head moves to the new id
 ```
+
+### 9) LSP-driven structural navigation (IDE mode on)
+
+```
+ae find -R HandleAuth                  # who calls it?
+# ref  auth.go:47:12   call         HandleAuth(ctx, req)
+# ref  middleware.go:128:8   call   HandleAuth(ctx, r2)
+# ref  test.go:34:5    import       HandleAuth
+
+ae find -s HandleAuth                  # where is it defined?
+# def  auth.go:47:1    HandleAuth   func
+
+ae sy auth.go --kind func              # list functions in this file
+# sym  func    auth.go:47:1    HandleAuth
+# sym  func    auth.go:89:1    parseToken
+
+# now do the actual edit, with the line number from the ref output
+ae view auth.go --range 47:60          # state_token=T1
+ae replace auth.go --range 50:50 --with "..." --expect T1
+# response includes diag lines if gopls flags anything new
+```
+
+Reach for these instead of `grep` when the question is structural ("who calls", "where is X defined", "what does this file expose"). Reach for `ae search` / `ae find` (regex) for free-text in comments, strings, TODOs.
 
 
 ## IDE mode
