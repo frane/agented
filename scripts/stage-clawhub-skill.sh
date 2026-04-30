@@ -53,6 +53,10 @@ awk '
       print "        - ae"
       print "    homepage: https://github.com/frane/agented"
       print "    emoji: \"\xF0\x9F\x93\x9D\""
+      print "    install:"
+      print "      - kind: go"
+      print "        package: github.com/frane/agented/cmd/ae@latest"
+      print "        bins: [ae]"
       injected = 1
     }
   }
