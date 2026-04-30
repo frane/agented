@@ -1,6 +1,6 @@
 ---
 name: agented
-version: 1.2.0
+version: 1.2.1
 binary: ae
 description: Stateful, persistent text editor for LLM agents. Undo tree, marks, annotations, transactions. Backed by SQLite.
 ---
@@ -39,6 +39,8 @@ The default is `concurrency.require_expect: warn`: writes without `--expect` suc
 The first time you touch a file in a session, do it through `ae open <path>`. Not `Read`, not `Edit`, not `cat`. The response is the input to the rest of the session.
 
 `ae open` returns six things: the file's id, line count, head_edit_id, content_hash, state_token, and any active annotations inline. Treat that response as authoritative. Annotations were left by a prior session for you to read. Read them. The state_token threads forward into your next write. The line_count tells you whether your assumptions about the file's shape match.
+
+`ae open <new-path>` is also the file-creation primitive. If the path doesn't exist on disk, ae creates an empty file there and registers it in the workspace. No `touch` first, no `--create` flag. The new-file flow is `ae open foo.go` → `ae i foo.go -A 0 -i` (insert content from stdin) → `ae w foo.go`. The same call covers "open this existing file" and "create this new file"; the response shape is identical either way.
 
 Skipping this step costs you. If you `Read` first, the agent runtime has the bytes, but the editor doesn't know you've seen the file. Subsequent writes through `ae` will treat your context as a fresh actor and may surface conflicts that wouldn't have happened otherwise. If you read via `ae open`, the editor knows your starting point, your writes thread cleanly, and the workspace history shows your session as a coherent sequence of edits rather than a stranger's drive-by.
 
