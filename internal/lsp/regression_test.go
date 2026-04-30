@@ -75,7 +75,7 @@ func TestReplaceDiagnosticsRejectsZeroFileID(t *testing.T) {
 	in := []lsp.Diagnostic{
 		{Severity: lsp.SevError, Line: 1, Col: 1, Message: "x", Source: "y"},
 	}
-	err = lsp.ReplaceDiagnostics(conn, 0, nil, in)
+	err = lsp.ReplaceDiagnostics(conn, 0, nil, "test", in)
 	if err == nil {
 		t.Fatalf("expected FK violation when fileID=0; the daemon must guard before calling")
 	}
@@ -107,7 +107,7 @@ func TestReplaceDiagnosticsClearsAllRowsOnNilEditID(t *testing.T) {
 	fresh := []lsp.Diagnostic{
 		{Severity: lsp.SevError, Line: 9, Col: 9, Message: "new", Source: "compile"},
 	}
-	if err := lsp.ReplaceDiagnostics(conn, 1, nil, fresh); err != nil {
+	if err := lsp.ReplaceDiagnostics(conn, 1, nil, "", fresh); err != nil {
 		t.Fatal(err)
 	}
 	got, err := lsp.QueryDiagnostics(conn, 1, nil, lsp.FilterAll, 0)
@@ -157,4 +157,52 @@ func TestEvalSymlinksFallbackResolvesTmp(t *testing.T) {
 	// The integration: a daemon storing files by canonical path will find the
 	// row when looking up via either form (after the fix).
 	_ = context.Background()
+}
+
+// TestMultipleSourceServersCoexist is the regression test for the v0.3.2
+// multi-LSP feature: diagnostics from two servers (e.g. tsserver and eslint)
+// must not trample each other. ReplaceDiagnostics with a non-empty
+// sourceServer scopes its DELETE to that server only.
+func TestMultipleSourceServersCoexist(t *testing.T) {
+	conn, err := db.Open(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	if _, err := conn.Exec(`INSERT INTO files (path, content_hash, registered_at) VALUES (?, ?, ?)`,
+		"/tmp/x.ts", "deadbeef", 0); err != nil {
+		t.Fatal(err)
+	}
+	tsserver := []lsp.Diagnostic{{Severity: lsp.SevError, Line: 5, Col: 3, Message: "type error", Source: "ts"}}
+	eslint := []lsp.Diagnostic{{Severity: lsp.SevWarn, Line: 7, Col: 1, Message: "unused", Source: "eslint"}}
+	if err := lsp.ReplaceDiagnostics(conn, 1, nil, "tsserver", tsserver); err != nil {
+		t.Fatal(err)
+	}
+	if err := lsp.ReplaceDiagnostics(conn, 1, nil, "eslint", eslint); err != nil {
+		t.Fatal(err)
+	}
+	got, err := lsp.QueryDiagnostics(conn, 1, nil, lsp.FilterAll, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("want 2 diagnostics from both servers, got %d: %+v", len(got), got)
+	}
+	// Now eslint re-publishes with a new finding; tsserver row must survive.
+	eslint2 := []lsp.Diagnostic{{Severity: lsp.SevWarn, Line: 9, Col: 1, Message: "another", Source: "eslint"}}
+	if err := lsp.ReplaceDiagnostics(conn, 1, nil, "eslint", eslint2); err != nil {
+		t.Fatal(err)
+	}
+	got, _ = lsp.QueryDiagnostics(conn, 1, nil, lsp.FilterAll, 0)
+	if len(got) != 2 {
+		t.Fatalf("want 2 (tsserver + new eslint), got %d", len(got))
+	}
+	// Scope-specific clear: eslint with empty list clears only its rows.
+	if err := lsp.ReplaceDiagnostics(conn, 1, nil, "eslint", nil); err != nil {
+		t.Fatal(err)
+	}
+	got, _ = lsp.QueryDiagnostics(conn, 1, nil, lsp.FilterAll, 0)
+	if len(got) != 1 || got[0].SourceServer != "tsserver" {
+		t.Fatalf("want only tsserver row, got %+v", got)
+	}
 }

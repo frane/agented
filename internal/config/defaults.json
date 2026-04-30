@@ -48,10 +48,32 @@
     "enabled": false,
     "auto_start_daemon": true,
     "languages": {
-      "go":         { "server": "gopls", "auto_start": true },
-      "typescript": { "server": "typescript-language-server", "args": ["--stdio"], "auto_start": false },
-      "rust":       { "server": "rust-analyzer", "auto_start": false },
-      "python":     { "server": "pyright-langserver", "args": ["--stdio"], "auto_start": false }
+      "go": {
+        "auto_start": true,
+        "servers": [
+          { "name": "gopls", "command": "gopls" }
+        ]
+      },
+      "typescript": {
+        "auto_start": false,
+        "servers": [
+          { "name": "tsserver", "command": "typescript-language-server", "args": ["--stdio"] },
+          { "name": "eslint",   "command": "vscode-eslint-language-server", "args": ["--stdio"] }
+        ]
+      },
+      "python": {
+        "auto_start": false,
+        "servers": [
+          { "name": "pyright", "command": "pyright-langserver", "args": ["--stdio"] },
+          { "name": "ruff",    "command": "ruff", "args": ["server"] }
+        ]
+      },
+      "rust": {
+        "auto_start": false,
+        "servers": [
+          { "name": "rust-analyzer", "command": "rust-analyzer" }
+        ]
+      }
     },
     "extensions": {
       ".go":  "go",

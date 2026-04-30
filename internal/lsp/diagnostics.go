@@ -30,7 +30,8 @@ type Diagnostic struct {
 	Message   string
 	Source    string
 	RuleID    string
-	CreatedAt int64
+	CreatedAt    int64
+	SourceServer string // The LSP server name that published this diagnostic.
 }
 
 // DiagnosticFilter selects which severities to surface.
@@ -58,20 +59,32 @@ func (f DiagnosticFilter) Severities() []Severity {
 	return []Severity{SevError}
 }
 
-// ReplaceDiagnostics atomically replaces the diagnostics for (file_id, edit_id)
-// with the given set. The daemon calls this when an LSP delivers a new
-// publishDiagnostics for a file at a given edit. Empty diags clears the row set.
-func ReplaceDiagnostics(db *sql.DB, fileID int64, editID *int64, diags []Diagnostic) error {
+// ReplaceDiagnostics atomically replaces the diagnostics for (file_id,
+// edit_id, source_server) with the given set. The daemon calls this when
+// an LSP delivers a new publishDiagnostics for a file. Empty diags clears
+// the row set scoped to this server.
+//
+// sourceServer "" means a single-source workspace (legacy v0.3.0/v0.3.1
+// behaviour): the call clears every row for this file, regardless of
+// source. With a non-empty sourceServer, only that server's rows are
+// replaced; rows from other servers stay.
+func ReplaceDiagnostics(db *sql.DB, fileID int64, editID *int64, sourceServer string, diags []Diagnostic) error {
 	tx, err := db.Begin()
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
-	if editID != nil {
+	switch {
+	case sourceServer != "" && editID != nil:
+		_, err = tx.Exec(`DELETE FROM diagnostics WHERE file_id = ? AND edit_id = ? AND source_server = ?`,
+			fileID, *editID, sourceServer)
+	case sourceServer != "":
+		_, err = tx.Exec(`DELETE FROM diagnostics WHERE file_id = ? AND source_server = ?`,
+			fileID, sourceServer)
+	case editID != nil:
 		_, err = tx.Exec(`DELETE FROM diagnostics WHERE file_id = ? AND edit_id = ?`, fileID, *editID)
-	} else {
-		// nil edit_id means "replace the current snapshot": clear every row
-		// for this file so legacy tagged rows from prior runs don't linger.
+	default:
+		// nil edit_id and empty sourceServer: clear everything for this file.
 		_, err = tx.Exec(`DELETE FROM diagnostics WHERE file_id = ?`, fileID)
 	}
 	if err != nil {
@@ -79,8 +92,8 @@ func ReplaceDiagnostics(db *sql.DB, fileID int64, editID *int64, diags []Diagnos
 	}
 	now := time.Now().UTC().UnixMilli()
 	stmt, err := tx.Prepare(`INSERT INTO diagnostics
-        (file_id, edit_id, severity, line, col, end_line, end_col, message, source, rule_id, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+        (file_id, edit_id, severity, line, col, end_line, end_col, message, source, rule_id, source_server, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
 	if err != nil {
 		return err
 	}
@@ -88,7 +101,8 @@ func ReplaceDiagnostics(db *sql.DB, fileID int64, editID *int64, diags []Diagnos
 	for _, d := range diags {
 		if _, err := stmt.Exec(
 			fileID, editID, string(d.Severity), d.Line, d.Col,
-			d.EndLine, d.EndCol, d.Message, nullStr(d.Source), nullStr(d.RuleID), now,
+			d.EndLine, d.EndCol, d.Message, nullStr(d.Source), nullStr(d.RuleID),
+			nullStr(sourceServer), now,
 		); err != nil {
 			return fmt.Errorf("insert diagnostic: %w", err)
 		}
@@ -110,7 +124,7 @@ func QueryDiagnostics(db *sql.DB, fileID int64, editID *int64, filter Diagnostic
 		args = append(args, string(s))
 	}
 	q := `SELECT id, file_id, edit_id, severity, line, col, end_line, end_col, message,
-              COALESCE(source, ''), COALESCE(rule_id, ''), created_at
+              COALESCE(source, ''), COALESCE(rule_id, ''), COALESCE(source_server, ''), created_at
          FROM diagnostics
         WHERE file_id = ? AND severity IN (` + strings.Join(placeholders, ",") + `)`
 	if editID != nil {
@@ -133,7 +147,7 @@ func QueryDiagnostics(db *sql.DB, fileID int64, editID *int64, filter Diagnostic
 		var editIDNullable sql.NullInt64
 		var endLine, endCol sql.NullInt64
 		if err := rows.Scan(&d.ID, &d.FileID, &editIDNullable, &sev,
-			&d.Line, &d.Col, &endLine, &endCol, &d.Message, &d.Source, &d.RuleID, &d.CreatedAt); err != nil {
+			&d.Line, &d.Col, &endLine, &endCol, &d.Message, &d.Source, &d.RuleID, &d.SourceServer, &d.CreatedAt); err != nil {
 			return nil, err
 		}
 		d.Severity = Severity(sev)

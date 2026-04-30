@@ -15,43 +15,47 @@ const (
 	StateStopped  LSPState = "stopped"
 )
 
-// LSPStatus mirrors a row in the lsp_status table.
+// LSPStatus mirrors a row in the lsp_status table. Each row is one
+// (language, server) pair — v0.3.2 supports multiple servers per language
+// (e.g. tsserver + eslint), each with its own status.
 type LSPStatus struct {
-	Language       string
-	State          LSPState
-	PID            *int
-	WorkspaceRoot  string
-	LastHeartbeat  int64
-	LastError      string
+	Language      string
+	Server        string
+	State         LSPState
+	PID           *int
+	WorkspaceRoot string
+	LastHeartbeat int64
+	LastError     string
 }
 
 // SetStatus upserts a status row. The daemon calls this on every transition
 // (starting/ready/crashed/stopped) and on heartbeat ticks.
-func SetStatus(db *sql.DB, language string, state LSPState, pid *int, workspaceRoot, lastError string) error {
+func SetStatus(db *sql.DB, language, server string, state LSPState, pid *int, workspaceRoot, lastError string) error {
 	now := time.Now().UTC().UnixMilli()
 	_, err := db.Exec(`INSERT INTO lsp_status
-        (language, state, pid, workspace_root, last_heartbeat, last_error)
-        VALUES (?, ?, ?, ?, ?, ?)
-        ON CONFLICT(language) DO UPDATE SET
+        (language, server, state, pid, workspace_root, last_heartbeat, last_error)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(language, server) DO UPDATE SET
             state          = excluded.state,
             pid            = excluded.pid,
             workspace_root = excluded.workspace_root,
             last_heartbeat = excluded.last_heartbeat,
             last_error     = excluded.last_error`,
-		language, string(state), pid, workspaceRoot, now, nullStr(lastError),
+		language, server, string(state), pid, workspaceRoot, now, nullStr(lastError),
 	)
 	return err
 }
 
-// GetStatus reads one language's status. Returns ok=false when the row is missing.
-func GetStatus(db *sql.DB, language string) (LSPStatus, bool, error) {
+// GetStatus reads one (language, server) status. Returns ok=false when
+// the row is missing.
+func GetStatus(db *sql.DB, language, server string) (LSPStatus, bool, error) {
 	var s LSPStatus
 	var pid sql.NullInt64
 	var workspaceRoot, lastError sql.NullString
 	var state string
-	row := db.QueryRow(`SELECT language, state, pid, workspace_root, last_heartbeat, last_error
-                          FROM lsp_status WHERE language = ?`, language)
-	if err := row.Scan(&s.Language, &state, &pid, &workspaceRoot, &s.LastHeartbeat, &lastError); err != nil {
+	row := db.QueryRow(`SELECT language, server, state, pid, workspace_root, last_heartbeat, last_error
+                          FROM lsp_status WHERE language = ? AND server = ?`, language, server)
+	if err := row.Scan(&s.Language, &s.Server, &state, &pid, &workspaceRoot, &s.LastHeartbeat, &lastError); err != nil {
 		if err == sql.ErrNoRows {
 			return s, false, nil
 		}
@@ -71,10 +75,11 @@ func GetStatus(db *sql.DB, language string) (LSPStatus, bool, error) {
 	return s, true, nil
 }
 
-// ListStatus returns one row per registered language, ordered by language.
+// ListStatus returns one row per (language, server) pair, ordered by
+// language then server.
 func ListStatus(db *sql.DB) ([]LSPStatus, error) {
-	rows, err := db.Query(`SELECT language, state, pid, workspace_root, last_heartbeat, last_error
-                            FROM lsp_status ORDER BY language`)
+	rows, err := db.Query(`SELECT language, server, state, pid, workspace_root, last_heartbeat, last_error
+                            FROM lsp_status ORDER BY language, server`)
 	if err != nil {
 		return nil, err
 	}
@@ -85,7 +90,7 @@ func ListStatus(db *sql.DB) ([]LSPStatus, error) {
 		var pid sql.NullInt64
 		var workspaceRoot, lastError sql.NullString
 		var state string
-		if err := rows.Scan(&s.Language, &state, &pid, &workspaceRoot, &s.LastHeartbeat, &lastError); err != nil {
+		if err := rows.Scan(&s.Language, &s.Server, &state, &pid, &workspaceRoot, &s.LastHeartbeat, &lastError); err != nil {
 			return nil, err
 		}
 		s.State = LSPState(state)
@@ -104,8 +109,7 @@ func ListStatus(db *sql.DB) ([]LSPStatus, error) {
 	return out, rows.Err()
 }
 
-// AnyReady reports whether at least one language is in the ready state. Used
-// by mutating verbs to skip diagnostic queries when no LSP is up.
+// AnyReady reports whether at least one server is in the ready state.
 func AnyReady(db *sql.DB) (bool, error) {
 	var n int
 	err := db.QueryRow(`SELECT COUNT(*) FROM lsp_status WHERE state = 'ready'`).Scan(&n)

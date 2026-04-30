@@ -44,7 +44,7 @@ func TestDiagnosticsRoundTrip(t *testing.T) {
 		{Severity: lsp.SevError, Line: 47, Col: 12, Message: "undefined: bar", Source: "compile"},
 		{Severity: lsp.SevWarn, Line: 89, Col: 4, Message: "unused variable x", Source: "lint"},
 	}
-	if err := lsp.ReplaceDiagnostics(conn, 1, nil, in); err != nil {
+	if err := lsp.ReplaceDiagnostics(conn, 1, nil, "test", in); err != nil {
 		t.Fatalf("replace: %v", err)
 	}
 	out, err := lsp.QueryDiagnostics(conn, 1, nil, lsp.FilterAll, 0)
@@ -73,10 +73,10 @@ func TestStatusRoundTrip(t *testing.T) {
 	}
 	defer conn.Close()
 	pid := 12345
-	if err := lsp.SetStatus(conn, "go", lsp.StateStarting, &pid, "/tmp/ws", ""); err != nil {
+	if err := lsp.SetStatus(conn, "go", "gopls", lsp.StateStarting, &pid, "/tmp/ws", ""); err != nil {
 		t.Fatalf("set: %v", err)
 	}
-	got, ok, err := lsp.GetStatus(conn, "go")
+	got, ok, err := lsp.GetStatus(conn, "go", "gopls")
 	if err != nil || !ok {
 		t.Fatalf("get: %v ok=%v", err, ok)
 	}
@@ -84,7 +84,7 @@ func TestStatusRoundTrip(t *testing.T) {
 		t.Fatalf("unexpected: %+v", got)
 	}
 	// Transition to ready.
-	if err := lsp.SetStatus(conn, "go", lsp.StateReady, &pid, "/tmp/ws", ""); err != nil {
+	if err := lsp.SetStatus(conn, "go", "gopls", lsp.StateReady, &pid, "/tmp/ws", ""); err != nil {
 		t.Fatalf("set: %v", err)
 	}
 	any, err := lsp.AnyReady(conn)
@@ -95,7 +95,7 @@ func TestStatusRoundTrip(t *testing.T) {
 	if err := lsp.MarkAllStopped(conn); err != nil {
 		t.Fatalf("stop: %v", err)
 	}
-	got, _, _ = lsp.GetStatus(conn, "go")
+	got, _, _ = lsp.GetStatus(conn, "go", "gopls")
 	if got.State != lsp.StateStopped {
 		t.Fatalf("not stopped: %+v", got)
 	}

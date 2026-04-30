@@ -55,11 +55,44 @@ type IDECfg struct {
 	Diagnostics      IDEDiagnosticsCfg          `json:"diagnostics"`
 }
 
-// IDELanguageCfg pins one language server.
+// IDELanguageCfg configures one language: which servers to spawn, plus
+// auto-start. Multiple servers per language are supported (e.g.
+// typescript-language-server + vscode-eslint-language-server). The first
+// entry in Servers answers symbol/reference/definition queries; all
+// entries contribute diagnostics.
+//
+// Backward compat: the legacy single-server form (top-level Server/Args)
+// from v0.3.0 / v0.3.1 still works. When Servers is non-empty it wins.
 type IDELanguageCfg struct {
-	Server    string   `json:"server"`
-	Args      []string `json:"args,omitempty"`
-	AutoStart bool     `json:"auto_start"`
+	Servers   []IDEServerCfg `json:"servers,omitempty"`
+	AutoStart bool           `json:"auto_start"`
+
+	// Legacy single-server fields. Used only when Servers is empty.
+	Server string   `json:"server,omitempty"`
+	Args   []string `json:"args,omitempty"`
+}
+
+// IDEServerCfg pins one LSP server within a language.
+//
+// Name is the display label used in lsp_status and the diagnostics
+// source_server column (e.g. "tsserver", "eslint"). Command is the
+// executable to spawn. If Name is empty it falls back to Command.
+type IDEServerCfg struct {
+	Name    string   `json:"name,omitempty"`
+	Command string   `json:"command"`
+	Args    []string `json:"args,omitempty"`
+}
+
+// ResolvedServers returns the canonical server list, synthesizing one
+// from the legacy Server/Args fields when Servers is empty.
+func (c IDELanguageCfg) ResolvedServers() []IDEServerCfg {
+	if len(c.Servers) > 0 {
+		return c.Servers
+	}
+	if c.Server == "" {
+		return nil
+	}
+	return []IDEServerCfg{{Name: c.Server, Command: c.Server, Args: c.Args}}
 }
 
 // IDEDiagnosticsCfg controls how diagnostics surface on mutating verbs.

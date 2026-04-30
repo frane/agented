@@ -190,7 +190,7 @@ The four settings most people change first. `concurrency.require_expect: warn` (
 Defaults are good enough that you don't need to touch any of this on day one.
 ## IDE mode (optional)
 
-`ae lsp` runs a daemon that hosts language servers (gopls today; pyright, typescript-language-server, and others as their integrations stabilize) and exposes their analysis to the agent through additional verbs. Symbol navigation, reference finding, definitions, plus diagnostics riding along on save and edit responses.
+`ae lsp` runs a daemon that hosts language servers and exposes their analysis to the agent through additional verbs. Symbol navigation, reference finding, definitions, plus diagnostics riding along on save and edit responses. Multiple servers per language are supported (e.g. `typescript-language-server` for tsc errors plus `vscode-eslint-language-server` for lint findings); the first server in the list answers structural queries, all configured servers contribute diagnostics tagged by source.
 
 The daemon is opt-in. Set `ide.enabled: true` in `.agented/config.json`, configure the languages you want under `ide.languages`, and `ae` handles the rest: the daemon starts on first IDE-relevant verb in a session, hosts the LSPs, writes diagnostics to the workspace's SQLite as it gets them, and tears down on `ae lsp stop`.
 
@@ -243,6 +243,46 @@ ae lsp logs                  # tail .agented/lsp.log
 `--no-auto-lsp` on any verb skips the auto-spawn (power-user safety).
 
 Existing verbs keep working with or without IDE mode. When the daemon is up, mutating verbs pick up diagnostic lines in their responses; when it's down, they don't. The agent never has to know whether the daemon is running for normal editing flow.
+### Multiple servers per language
+
+A language can name a list of servers. The first answers symbol/reference/definition queries; all of them contribute diagnostics tagged by server name in the `diag` lines.
+
+```json
+{
+  "ide": {
+    "enabled": true,
+    "languages": {
+      "typescript": {
+        "auto_start": true,
+        "servers": [
+          { "name": "tsserver", "command": "typescript-language-server", "args": ["--stdio"] },
+          { "name": "eslint",   "command": "vscode-eslint-language-server", "args": ["--stdio"] }
+        ]
+      },
+      "python": {
+        "auto_start": true,
+        "servers": [
+          { "name": "pyright", "command": "pyright-langserver", "args": ["--stdio"] },
+          { "name": "ruff",    "command": "ruff", "args": ["server"] }
+        ]
+      }
+    }
+  }
+}
+```
+
+Built-in defaults already wire `tsserver + eslint` for TypeScript and `pyright + ruff` for Python. Set `auto_start: true` on the language to use them; install the LSP binaries first (`npm install -g typescript-language-server vscode-eslint-language-server`, `pip install pyright ruff`).
+
+`ae lsp status` shows one row per `(language, server)` pair:
+
+```
+lsp  go         gopls    ready  pid=12345
+lsp  typescript tsserver ready  pid=12346
+lsp  typescript eslint   ready  pid=12347
+```
+
+The legacy single-server form (`{"server": "gopls", "auto_start": true}`) from v0.3.0/v0.3.1 still works.
+
 
 v0.3.0 ships with Go (`gopls`) wired up and validated. TypeScript and Python should work via config but treat them as alpha. Rust and others are config-only for now (the daemon will spawn whatever's configured but per-language quirks aren't tested).
 

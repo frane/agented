@@ -1,6 +1,6 @@
 ---
 name: agented
-version: 1.2.3
+version: 1.2.4
 binary: ae
 description: Stateful, persistent text editor for LLM agents. Undo tree, marks, annotations, transactions. Backed by SQLite.
 ---
@@ -342,6 +342,19 @@ When IDE mode is active, mutating verbs (`ae save`, `ae replace`, `ae apply`, et
 Diagnostics are informational. The operation succeeded; the diagnostics report current LSP findings on the file. Decide whether to act on them based on the task.
 
 The absence of diag lines does not mean the file is clean. It means either there are no diagnostics, the LSP hasn't analyzed yet, the language has no LSP configured, or the daemon isn't running. Don't infer file health from absence of diagnostics. If the user asks "is this file clean?", answer "no diagnostics returned" rather than "the file is clean."
+
+A language can run multiple LSP servers. The first listed answers symbol/reference/definition queries; all of them publish diagnostics, tagged by source server in `diag` lines:
+
+  diag  error foo.ts:14:3   Cannot find name 'bar'.   ts
+  diag  warn  foo.ts:14:3   'bar' is not defined.       eslint
+
+The last column is the source-server label (e.g. `tsserver`, `eslint`, `pyright`, `ruff`, `gopls`). When you see two `diag` lines at the same location with different sources, treat them as independent findings — the type checker and the linter looking at the same code from different angles.
+
+Default server lists (when the language has `auto_start: true` and the binaries are installed):
+- `go`: `gopls`
+- `typescript`: `tsserver` + `eslint`
+- `python`: `pyright` + `ruff`
+- `rust`: `rust-analyzer`
 
 ### Severity, kind, and usage vocabularies
 

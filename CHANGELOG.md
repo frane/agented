@@ -2,6 +2,31 @@
 
 All notable changes to agented are documented here. The format is based on [Keep a Changelog](https://keepachangelog.com), and the project follows [Semantic Versioning](https://semver.org).
 
+## [v0.3.2] - 2026-04-30
+
+### Features
+
+- **Multiple LSP servers per language.** A language can now run a list of servers; the first answers symbol/reference/definition queries, all contribute diagnostics tagged by source. Lets you run a type checker (tsc, pyright) and a linter (eslint, ruff) in parallel and see findings from both on every save.
+- **Sane multi-LSP defaults** in the embedded config:
+  - `go`: `gopls`
+  - `typescript`: `tsserver` + `eslint`
+  - `python`: `pyright` + `ruff`
+  - `rust`: `rust-analyzer`
+  Set `auto_start: true` on the language to use them; install the LSP binaries first (`npm i -g typescript-language-server vscode-eslint-language-server`, `pip install pyright ruff`).
+- **`ae lsp status`** shows one row per `(language, server)` pair: `lsp typescript tsserver ready pid=...`.
+
+### Schema
+
+- **Schema v4.** `diagnostics.source_server` column tracks which LSP published each diagnostic so multi-server setups don't trample. `lsp_status` rebuilt with `(language, server)` composite primary key. Existing v3 rows migrate cleanly: pre-existing `lsp_status` rows are preserved with `server = language` (single-server era).
+
+### Backward compatibility
+
+- Legacy single-server config form (`{"server": "gopls", "auto_start": true}`) from v0.3.0/v0.3.1 still works. When `servers` is empty, the legacy `server`/`args` fields are synthesized into a one-element list.
+
+### Documentation
+
+- README + SKILL.md (1.2.4): multi-LSP section, the four built-in defaults, the diag-line source label format.
+
 ## [v0.3.1] - 2026-04-30
 
 ### Fixes

@@ -30,14 +30,15 @@ type Daemon struct {
 	LogWriter     io.Writer
 
 	mu       sync.RWMutex
-	clients  map[string]*languageClient // keyed by language id
+	clients  map[string][]*languageClient // language id -> all spawned servers
 	openURIs map[string]openFile
 	listener net.Listener
 }
 
 type languageClient struct {
-	language string
-	cfg      config.IDELanguageCfg
+	language string  // "go", "typescript", ...
+	name     string  // server name within the language ("gopls", "eslint", ...)
+	cfg      config.IDEServerCfg
 	client   *Client
 }
 
@@ -61,7 +62,7 @@ func NewDaemon(db *sql.DB, cfg *config.IDECfg, workspaceRoot, workspaceDir strin
 		WorkspaceRoot: workspaceRoot,
 		WorkspaceDir:  workspaceDir,
 		LogWriter:     logW,
-		clients:       map[string]*languageClient{},
+		clients:       map[string][]*languageClient{},
 		openURIs:      map[string]openFile{},
 	}
 }
@@ -133,34 +134,52 @@ func (d *Daemon) startLanguages(ctx context.Context) {
 		if !cfg.AutoStart {
 			continue
 		}
-		if err := d.spawnLanguage(ctx, lang, cfg); err != nil {
-			fmt.Fprintf(d.LogWriter, "spawn %s: %v\n", lang, err)
-			_ = SetStatus(d.DB, lang, StateCrashed, nil, d.WorkspaceRoot, err.Error())
+		for _, srv := range cfg.ResolvedServers() {
+			name := serverName(srv)
+			if err := d.spawnServer(ctx, lang, name, srv); err != nil {
+				fmt.Fprintf(d.LogWriter, "spawn %s/%s: %v\n", lang, name, err)
+				_ = SetStatus(d.DB, lang, name, StateCrashed, nil, d.WorkspaceRoot, err.Error())
+			}
 		}
 	}
 }
 
-func (d *Daemon) spawnLanguage(ctx context.Context, lang string, cfg config.IDELanguageCfg) error {
-	_ = SetStatus(d.DB, lang, StateStarting, nil, d.WorkspaceRoot, "")
+// spawnServer starts one LSP server inside a language and tracks it on the
+// language's slice. Multiple servers per language coexist; the first to
+// register wins symbol/reference/definition queries; all contribute
+// diagnostics tagged by server name.
+func (d *Daemon) spawnServer(ctx context.Context, lang, name string, srv config.IDEServerCfg) error {
+	_ = SetStatus(d.DB, lang, name, StateStarting, nil, d.WorkspaceRoot, "")
 	onPub := func(uri string, version *int, ds []LSPDiagnostic) {
-		d.recordDiagnostics(uri, ds)
+		d.recordDiagnostics(name, uri, ds)
 	}
 	onLog := func(line string) {
-		fmt.Fprintf(d.LogWriter, "[%s] %s\n", lang, line)
+		fmt.Fprintf(d.LogWriter, "[%s/%s] %s\n", lang, name, line)
 	}
-	c, err := SpawnClient(ctx, cfg.Server, cfg.Args, d.WorkspaceRoot, onPub, onLog)
+	c, err := SpawnClient(ctx, srv.Command, srv.Args, d.WorkspaceRoot, onPub, onLog)
 	if err != nil {
 		return err
 	}
 	d.mu.Lock()
-	d.clients[lang] = &languageClient{language: lang, cfg: cfg, client: c}
+	d.clients[lang] = append(d.clients[lang], &languageClient{
+		language: lang, name: name, cfg: srv, client: c,
+	})
 	d.mu.Unlock()
 	pid := c.PID()
-	_ = SetStatus(d.DB, lang, StateReady, &pid, d.WorkspaceRoot, "")
+	_ = SetStatus(d.DB, lang, name, StateReady, &pid, d.WorkspaceRoot, "")
 	return nil
 }
 
-func (d *Daemon) recordDiagnostics(uri string, lspDiags []LSPDiagnostic) {
+// serverName picks the display name for a server config: explicit Name
+// when set, otherwise the Command basename.
+func serverName(srv config.IDEServerCfg) string {
+	if srv.Name != "" {
+		return srv.Name
+	}
+	return srv.Command
+}
+
+func (d *Daemon) recordDiagnostics(sourceServer string, uri string, lspDiags []LSPDiagnostic) {
 	d.mu.RLock()
 	open, ok := d.openURIs[uri]
 	d.mu.RUnlock()
@@ -205,7 +224,7 @@ func (d *Daemon) recordDiagnostics(uri string, lspDiags []LSPDiagnostic) {
 			RuleID:   ruleID,
 		})
 	}
-	if err := ReplaceDiagnostics(d.DB, fileID, editID, diags); err != nil {
+	if err := ReplaceDiagnostics(d.DB, fileID, editID, sourceServer, diags); err != nil {
 		fmt.Fprintf(d.LogWriter, "record diagnostics: %v\n", err)
 	}
 }
@@ -215,11 +234,13 @@ func (d *Daemon) shutdownAll(ctx context.Context) {
 	defer d.mu.Unlock()
 	deadline, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	for _, lc := range d.clients {
-		_ = lc.client.Shutdown(deadline)
-		_ = SetStatus(d.DB, lc.language, StateStopped, nil, d.WorkspaceRoot, "")
+	for _, list := range d.clients {
+		for _, lc := range list {
+			_ = lc.client.Shutdown(deadline)
+			_ = SetStatus(d.DB, lc.language, lc.name, StateStopped, nil, d.WorkspaceRoot, "")
+		}
 	}
-	d.clients = map[string]*languageClient{}
+	d.clients = map[string][]*languageClient{}
 }
 
 // LanguageFor returns the language id configured for path's extension, or "".
@@ -240,22 +261,26 @@ func (d *Daemon) EnsureOpen(uri, path string, fileID int64, editID *int64, conte
 		return
 	}
 	d.mu.RLock()
-	lc, ok := d.clients[lang]
+	clients, ok := d.clients[lang]
 	d.mu.RUnlock()
-	if !ok {
+	if !ok || len(clients) == 0 {
 		return
 	}
 	d.mu.Lock()
 	existing, isOpen := d.openURIs[uri]
 	d.mu.Unlock()
 	if !isOpen {
-		_ = lc.client.DidOpen(uri, lang, 1, content)
+		// Tell every server in this language about the file. Each gets its
+		// own internal model of the buffer; diagnostics from each will be
+		// tagged with the server name in recordDiagnostics.
+		for _, lc := range clients {
+			_ = lc.client.DidOpen(uri, lang, 1, content)
+		}
 		d.mu.Lock()
 		d.openURIs[uri] = openFile{language: lang, uri: uri, path: path, fileID: fileID, editID: editID, version: 1}
 		d.mu.Unlock()
 		return
 	}
-	// Re-open silently if the previous tracker had a different fileID.
 	if existing.fileID != fileID {
 		d.mu.Lock()
 		existing.fileID = fileID
@@ -272,8 +297,8 @@ func (d *Daemon) NotifyChange(uri, path string, fileID int64, editID *int64, con
 		return
 	}
 	d.mu.Lock()
-	lc, hasLang := d.clients[lang]
-	if !hasLang {
+	clients, hasLang := d.clients[lang]
+	if !hasLang || len(clients) == 0 {
 		d.mu.Unlock()
 		return
 	}
@@ -286,10 +311,12 @@ func (d *Daemon) NotifyChange(uri, path string, fileID int64, editID *int64, con
 	open.editID = editID
 	d.openURIs[uri] = open
 	d.mu.Unlock()
-	if !exists {
-		_ = lc.client.DidOpen(uri, lang, open.version, content)
-	} else {
-		_ = lc.client.DidChange(uri, open.version, content)
+	for _, lc := range clients {
+		if !exists {
+			_ = lc.client.DidOpen(uri, lang, open.version, content)
+		} else {
+			_ = lc.client.DidChange(uri, open.version, content)
+		}
 	}
 }
 
@@ -330,15 +357,20 @@ func (d *Daemon) firstReadyClient() *languageClient {
 	d.mu.RLock()
 	defer d.mu.RUnlock()
 	// Prefer "go" since v0.3 ships with gopls validated; fall back to any.
-	if c, ok := d.clients["go"]; ok {
-		return c
+	if list, ok := d.clients["go"]; ok && len(list) > 0 {
+		return list[0]
 	}
-	for _, c := range d.clients {
-		return c
+	for _, list := range d.clients {
+		if len(list) > 0 {
+			return list[0]
+		}
 	}
 	return nil
 }
 
+// clientForPath returns the first server in the language's server list,
+// which is the one that answers symbol/reference/definition queries.
+// Diagnostics-only servers later in the list don't handle these queries.
 func (d *Daemon) clientForPath(path string) *languageClient {
 	lang := d.LanguageFor(path)
 	if lang == "" {
@@ -346,8 +378,8 @@ func (d *Daemon) clientForPath(path string) *languageClient {
 	}
 	d.mu.RLock()
 	defer d.mu.RUnlock()
-	if lc, ok := d.clients[lang]; ok {
-		return lc
+	if list, ok := d.clients[lang]; ok && len(list) > 0 {
+		return list[0]
 	}
 	return nil
 }

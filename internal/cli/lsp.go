@@ -88,8 +88,8 @@ func newLSPStatusCmd(a *App) *cobra.Command {
 				if r.PID != nil {
 					pid = strconv.Itoa(*r.PID)
 				}
-				fmt.Fprintf(a.Stdout, "lsp\t%s\t%s\tpid=%s\tlast_error=%s\n",
-					r.Language, r.State, pid, r.LastError)
+				fmt.Fprintf(a.Stdout, "lsp\t%s\t%s\t%s\tpid=%s\tlast_error=%s\n",
+					r.Language, r.Server, r.State, pid, r.LastError)
 			}
 			return nil
 		},
