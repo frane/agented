@@ -2,36 +2,9 @@
 
 A text editor for LLMs.
 
-The idea: take ed, the line editor that nobody has voluntarily used since about 1975, and rebuild it for an environment where the typing user is a language model. Short verbs, line addresses, no modes, no TUI, no syntax highlighting, none of the things a human would expect from an editor in 2026.
+Take ed, the line editor that nobody has voluntarily used since about 1975, and rebuild it for an environment where the typing user is a language model. Short verbs, line addresses, no modes, no TUI. What an editor optimises for changes when the user is the model: round trips per task, tokens per command, an editing buffer with a long memory, and an undo tree that remembers the branches the agent abandoned, because that's often where the interesting work was.
 
-Once the user is the model, what an editor should optimise for changes. Humans care about keystrokes per second and visual feedback. Agents care about round trips per task and tokens per command. Humans can hold a working picture of a file in their head. An agent's picture goes stale the moment another process touches the file, so the editor has to keep track of state on the agent's behalf. Humans undo a few times and accept whatever's left of the timeline. Agents run six refactors in a row before picking one, and the five abandoned versions are often where the interesting work was, which is why this editor remembers branches.
-
-## What it is, concretely
-
-A SQLite-backed workspace that lives in `.agented/` next to your project. The agent runs `ae open foo.go`, makes some edits, leaves a note, exits. Three days later a different agent (different process, different model, even a different vendor's CLI in the next terminal over) runs `ae open foo.go` and gets back the file with its annotation count, the current head edit, and inline annotations from previous sessions. State outlives the process. It also outlives the agent.
-
-The workspace creates itself on first use. `ae open foo.go` in a directory that's part of a git repository or a Go module or any other recognized project type auto-creates `.agented/` at the project root. Outside any project, edits go to a global workspace at `~/.agented/`. `ae init` exists for explicit control, picking a non-standard location, or scripted setup, but the agent never has to think about it in the normal flow.
-
-Read once, edit forever. Your local picture of the file, built from the response to `ae open` and every edit you've issued since, is the source of truth between reads. The editor reports drift via full-content rejection payloads: a write with a stale `--expect` token rejects with the current file content attached, the new token, and the actor who moved it. You update your model from the rejection and retry. One round trip on conflict, no "Read before every Write" ritual, no defensive re-reads. This is the inverse of `Edit`'s contract.
-
-The history is a tree, not a stack. Most MCP text editors I've seen expose `undo_edit` as if a file's history is a single timeline. It isn't. Agents explore: they try one refactor, decide it's wrong, walk back, try another turn. With a stack the original branch is gone. With a tree both directions are still there, addressable by id, and the agent can `ae head foo.go --edit 47` to jump back to whichever version it wants to continue from. The recovery scenario shown in the session example below is the case that justifies the cost. It isn't theoretical.
-
-`ae merge` turns the tree into something agents can actually reconcile. It's a real three-way merge: walk back to the lowest common ancestor, diff each branch against it, apply non-overlapping changes automatically, and return a structured conflict response for the rest. `--resolve start:end=a|b|"text"` resolves a specific range, `--prefer a|b` auto-resolves every conflict in favor of one branch, `--abort` walks away clean.
-
-`ae apply` consumes JSON-lines on stdin and runs every operation inside one transaction. Multi-edit refactors that would be N round trips through `Edit` become one round trip through ae, all-or-nothing, with no partial-success ambiguity. The response identifies which op failed if any.
-
-`ae move` cuts a line range and inserts it elsewhere, in the same file or across files, in one transaction. `ae replace --pattern` does regex search-and-replace with capture groups in a single verb. Both are operations `Edit`'s addressing model can't express cleanly.
-
-The state token is the small primitive that makes the rest cheap. Every state of a file has a deterministic 16-character fingerprint, computed from `(file_id, head_edit_id, content_hash)`. Reads return it. Writes accept `--expect <token>`. Default is warn mode (writes without the token succeed with a stderr nudge). Strict mode rejects up front. Either way, an actual conflict produces exit code 3 and the recovery payload.
-
-Annotations are the cross-session memory. Per-file notes that persist across processes, across agents, across vendors. `ae open` returns active annotations inline, so reading them is automatic. A Codex session at 4pm picks up where the Claude Code session at 11am stopped, with the annotations as the handoff.
-
-A daemon (`ae lsp`) hosts language servers when you set `ide.enabled: true`. With it on, `ae symbols`, `ae find --references`, and `ae find --definition` answer structural questions through the LSP instead of regex, and mutating verbs pick up `diag` lines from the language server's analysis. Off by default; v0.2 behaviour is byte-identical when disabled. See "IDE mode (optional)" below.
-
-None of which makes this an editor for humans. There is no TUI, no keybindings, no vim mode, no emacs mode, no syntax highlighting. If you want to edit code with your hands you already have whatever you've been using, so don't switch. It's also not a version control system or a database. The history tree is for editing-session continuity, not for replacing git. Save things to disk, commit them, push them, as usual.
-
-
-## What users say
+## Testimonials
 
 ```
 ⏺ ae remembers what my last session was doing, which is more than I can say for me.
@@ -47,65 +20,25 @@ None of which makes this an editor for humans. There is no TUI, no keybindings, 
 
 — Codex CLI
 
-## Tokens
-
-Verbs are short on purpose. `s` is replace, `i` is insert, `d` is delete, `v` is view, `u` is undo, `r` is redo, `br` is branches, `an` is annotate. Flags follow the same logic: `-r` for range, `-w` for with, `-x` for expect, `-t` for text, `-a` for after. Output is tab-delimited and stripped to the fields the agent actually has to parse. Long forms exist for the skill to teach and for humans reading logs: `ae replace foo.go --range 12:14 --with "..." --expect ab12cd34` is the same command as `ae s foo.go -r 12:14 -w "..." -x ab12cd34`.
-
-The bigger claim isn't per-call tokens, it's round-trip economy. Built-in `Edit` requires a prior `Read` per file, and Read returns the entire file content into context every time. For a 1000-line file with one 5-line change, that's roughly ten thousand tokens of file content paid on every session. `ae open` returns a few dozen bytes of metadata (file id, state token, line count, annotations), and subsequent edits send only the patch. Across a multi-edit session, the agent's local picture of the file is built once and maintained from rejection payloads when reality drifts. Nothing is re-read.
-
-Some measured numbers from the in-process benchmark suite (`make bench` regenerates `test/benchmark/results.md`):
-
-| Scenario | Wall time |
-|---|---|
-| open + 1 small replace, 100-line file | 7 ms |
-| open + 10 sequential replaces | 7 ms |
-| open + 50 sequential replaces | 39 ms |
-| 10-op atomic batch via `ae apply` | 9 ms |
-| regex replace across a 200-line file | 7 ms |
-
-The suite is in-process and measures ae against itself. Producing apples-to-apples comparisons against `Read`/`Edit`/`Write` requires instrumenting those tools' tool-call protocol, which the suite doesn't run. That comparison is future work. The architectural argument above is what the project rests on, the numbers above are what's been measured.
-
-MCP doesn't get the same savings, since JSON envelopes are JSON envelopes. Use the CLI through skills if you have a shell, MCP if you don't.
-
 ## Install
 
-```
+```sh
 curl -sSL https://raw.githubusercontent.com/frane/agented/master/install.sh | sh
 ```
 
-That's the typical install path: detects your platform, downloads the matching binary from GitHub Releases, verifies the checksum, drops it in `~/.local/bin/` or `/usr/local/bin/`. Set `AE_INSTALL_DIR` to override the destination, `AE_VERSION` to pin a specific version.
+Detects the platform, downloads the matching release binary, drops it in `~/.local/bin/`. macOS or Linux with Homebrew: `brew tap frane/tap && brew install agented`. From source: `go install github.com/frane/agented/cmd/ae@latest`. Pure Go, no cgo, single static binary, Apache 2.0.
 
-On macOS or Linux with Homebrew, the tap gives you signed/notarized release binaries with `brew upgrade` for free:
-
-```
-brew tap frane/tap
-brew install agented
-```
-
-If you have Go installed and prefer compiling from source:
-
-```
-go install github.com/frane/agented/cmd/ae@latest
-```
-
-Or clone the repo and `make install`. Pure Go, no cgo, statically linked single binary. Three external runtime dependencies (`modernc.org/sqlite`, `spf13/cobra`, `mark3labs/mcp-go`) on top of the standard library. Apache 2.0.
-
-Prebuilt binaries for macOS, Linux, and Windows on every release: <https://github.com/frane/agented/releases>.
-
-## What a session looks like
+## Start
 
 ```sh
-ae o foo.go                              # state_token=ab12cd34, 0 annotations
-ae v foo.go -r 1:20                      # state_token=ab12cd34
-ae s foo.go -r 12:14 -w "..." -x ab12cd34   # disk auto-saved, returns next token
-ae u foo.go                              # walk head back; disk auto-syncs
-ae br foo.go
-ae an foo.go add -t "auth path is fragile, see 4f2a"
+ae skill install
 ```
 
-Auto-save is on by default for write verbs, so `ae save` is rare. Set `concurrency.auto_save: off` in config if you want manual control. The `ae save` and `ae load` commands still exist for explicit flush / disk-reload, but they are not part of the normal flow.
+Drops a `SKILL.md` into every detected agent's skills directory. Then your agent runs `ae open <file>` instead of reaching for Read, and goes from there. The skill teaches the rest.
 
-The same shape covers recovery. Imagine the agent makes thirty edits over an hour, you walk away, come back to find it went off the rails around edit 18, but edits 19–23 are still useful:
+## A taste
+
+The shape that justifies the rest of the editor is recovery. The agent makes thirty edits over an hour, you walk away, come back to find it went off the rails around edit 18, but edits 19-23 are still useful:
 
 ```sh
 ae br foo.go                             # see the leaves, current head is the bad one
@@ -114,232 +47,50 @@ ae v foo.go                              # confirm what's there
 ae s foo.go -r 40:42 -w "..." -x <token> # continue forward, creates a sibling branch
 ```
 
-The wrong path is still in the tree, addressable by edit_id if you ever want to look. With linear undo this scenario is "rollback the entire transaction or live with the bad version." With the tree it's a `head --edit` and a `view`.
+With linear undo this scenario is "rollback the entire batch or live with the bad version." With the tree it's a `head --edit` and a `view`.
 
-For multi-edit batches, the densest form:
+## Features
 
-```sh
-ae apply foo.go << 'OPS'
-s 12:14 newName(
-s 40:40 newName(
-i 80 // see ADR-0042
-OPS
-# atomic. any failure rolls all three back. on success, one new state_token
-```
+- **State that survives the process.** A SQLite-backed workspace under `.agented/`. Open three days later from a different agent and the file's history, annotations, and head are right there.
+- **State tokens, not pre-write reads.** Every read returns a 16-character fingerprint; every write checks it. Conflicts come back as exit code 3 with the new content attached.
+- **Branching undo tree.** When the agent goes the wrong way, the abandoned work is still addressable by edit id.
+- **Three-way merge.** `ae merge` walks back to the lowest common ancestor and returns a structured response for the conflicts.
+- **Atomic batches.** `ae apply` runs N operations in one call, all-or-nothing. Three input formats detected from the first line.
+- **Cross-file moves.** `ae move` cuts a range and inserts it elsewhere in one call, no half-moved code.
+- **Regex replace with capture groups.** `ae replace --pattern` does sed-style substitution as a single verb.
+- **Auto-save with drift detection.** Writes flush in the same call; an external editor's change is loaded as a new branch instead of being silently overwritten.
+- **Annotations as cross-session memory.** Per-file notes the next `ae open` returns inline, so a Codex session at 4pm picks up where Claude Code at 11am left off.
+- **Cross-file regex search.** `ae find <pattern>` returns matches with per-file state tokens, ready to feed back into a write.
+- **Audit log of every operation.** `ae log <path>` shows what touched the file, by which actor, with which result.
 
-`ae apply` accepts three input formats. Shortform (above) is what an agent reaches for when constructing a batch by hand. The keys are gone, the operations stay readable. Longform (`replace range=12:14 with=newName(`) is the same density with full verb names, useful when the batch goes into a saved file or a test fixture. JSON-lines (`{"verb":"replace","range":"12:14","with":"newName("}`) is what `ae find --json` produces and what fits naturally when piping from another tool. All three are detected from the first line, no flag.
+## Skill and MCP
 
-When two agents edit the same file at once, the second write rejects with a state-token conflict (exit 3). The conflict response carries the new state token and the current content of the affected range, so the second agent can decide in one round trip: retry on the new head, or take the original token's edit and explore that branch deliberately. Either way both edits are addressable in the tree afterwards. `ae br foo.go` shows the leaves. Pruning, transaction timeouts, stale-buffer detection are all in `.agented/config.json`. The agent doesn't have to think about any of it.
+`ae skill install` writes the SKILL.md to every detected agent. `ae serve` exposes the same verbs over MCP for agents without shell access. Details in [docs/skill.md](docs/skill.md) and [docs/mcp.md](docs/mcp.md).
 
-## MCP
+## IDE mode
 
-`ae serve` runs an MCP server exposing the editor verbs as MCP tools. Use it when the agent doesn't have shell access and can't invoke the CLI directly. When the agent has a shell, prefer the CLI through skills. MCP doesn't get the same token economy because JSON envelopes are JSON envelopes.
+With `ide.enabled` in `.agented/config.json`, `ae lsp` runs language-server-backed verbs (symbols, references, definitions) and rides diagnostics on save and edit responses. Details in [docs/ide.md](docs/ide.md).
 
-The server uses MCP's standard stdio transport, which is what most clients expect:
+## Performance
 
-```
-ae serve
-```
+A single open-and-replace on a 100-line file is ~9 ms wall time including auto-save fsync; 50 sequential replaces is ~325 ms. See [test/benchmark/results.md](test/benchmark/results.md).
 
-`--port <n>` switches to TCP, `--socket <path>` to a Unix socket. Stdio is the default and the right choice for client-spawned servers.
+## Docs
 
-The agent's client connects by spawning `ae serve` as a subprocess. The exact registration depends on the client. For Claude Desktop, edit `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) or `%APPDATA%\Claude\claude_desktop_config.json` (Windows) to add the server:
+- [Concepts](docs/concepts.md): design choices and the state model
+- [Usage](docs/usage.md): session walkthroughs
+- [Skill](docs/skill.md): what `ae skill install` does
+- [Permissions](docs/permissions.md): editor-harness integration
+- [Configuration](docs/configuration.md): what's tunable
+- [Tokens](docs/tokens.md): why the output looks the way it does
+- [MCP](docs/mcp.md): running the MCP server
+- [IDE](docs/ide.md): LSP-backed features
+- [Build](docs/build.md): tests and benchmarks
 
-```json
-{
-  "mcpServers": {
-    "agented": {
-      "command": "ae",
-      "args": ["serve"]
-    }
-  }
-}
-```
+## Contributing
 
-Restart Claude Desktop. The agented tools become available in the next session.
+Issues and PRs welcome. Feedback especially welcome on the agent-drift problem (LLMs occasionally fall back to built-in Read/Edit even with the skill installed).
 
-For other MCP clients (Cursor, Zed, Continue, Cline, custom agents using the MCP SDK), the registration shape is the same JSON, only the file location differs. Check the client's MCP documentation for where its config lives.
+## License
 
-The server exposes one MCP tool per verb, prefixed `ae_`: `ae_open`, `ae_close`, `ae_list`, `ae_status`, `ae_view`, `ae_search`, `ae_find`, `ae_diff`, `ae_log`, `ae_replace`, `ae_insert`, `ae_delete`, `ae_undo`, `ae_redo`, `ae_head`, `ae_branches`, `ae_mark_add`, `ae_mark_list`, `ae_mark_get`, `ae_mark_remove`, `ae_annotate_add`, `ae_annotate_list`, `ae_annotate_remove`, `ae_annotate_search`, `ae_begin`, `ae_commit`, `ae_rollback`, `ae_save`, `ae_load`, `ae_who`. Arguments mirror the CLI flags. The state-token contract is identical, including the conflict response with full file content.
-
-The MCP path uses the same workspace as the CLI. Switching between MCP and CLI mid-session is fine. Both write to the same `.agented/` and see the same head, branches, and annotations.
-
-Workspace discovery happens once when `ae serve` starts, walking up from the subprocess's working directory. Claude Code spawns subprocesses from the project dir, so discovery hits the local `.agented/`. Claude Desktop spawns from `$HOME`, so the global `~/.agented/` becomes the workspace. To pin a specific workspace regardless of cwd, add `"args": ["serve", "--workspace-dir", "/abs/path/.agented"]` to the client config. For absolute file paths in `ae open`, discovery follows the file's directory rather than cwd, so most cases work without the override.
-## The skill
-
-Run `ae skill install` once and a `SKILL.md` lands in every detected client's skills directory plus the canonical `~/.agents/skills/agented/`. The default does the obvious thing: writes to `~/.agents/`, `~/.claude/skills/`, `~/.codex/skills/`, and `~/.openclaw/workspace/skills/` if those clients are present (detected via home dir or binary on PATH). `ae skill list` shows where it's installed and at what version. `ae skill upgrade` re-installs to the same set after a binary update. `ae skill uninstall` removes only the `agented/` subfolder, never sibling skills. `--target <name>` (`agents`, `claude`, `codex`, `cursor`, `openclaw`) picks one. `--scope project` writes inside the workspace instead. `--dry-run` shows what would happen.
-
-The skill is half of why this works at all. It documents every verb in both forms, pairs every error with the recovery action, and walks through six full sessions covering the patterns that actually come up: read-modify-verify on a single function, a multi-file transactional refactor that rolls back when the tests fail, backtracking after a wrong turn, and leaving a handoff for the next session.
-
-Annotations are worth their own paragraph because most people miss them on first read. They're per-file notes the agent leaves for whoever opens the file next. `ae open` returns them inline, so the first thing any new session sees is what previous sessions thought was worth remembering. An agent's working memory is whatever fits in its context window, and that memory ends when the session ends. Annotations are how it persists across that gap.
-
-## Permissions
-
-`ae` integrates with editor harnesses (Claude Code today, Codex when its config schema lands) so you don't get permission-prompted on every invocation. `ae permissions install` writes allow-rules into the detected client's config so `Bash(ae *)` and `Bash(./ae *)` go through without confirmation. Same Target-driven design as `ae skill install`:
-
-```sh
-ae permissions install --target claude --scope project   # writes .claude/settings.local.json
-ae permissions install --target claude --scope global    # writes ~/.claude/settings.json
-ae permissions list --scope project                      # show what's configured where
-ae permissions uninstall --target claude                 # remove ae's rules, sibling rules untouched
-```
-
-Default `--target all` writes to every detected client. Default `--scope project` keeps the changes machine-local and gitignored. `--dry-run` shows what would be written.
-
-## Configuration
-
-Project config in `.agented/config.json`, global config in `~/.agented/config.json`, project overrides global. JSON because the standard library parses JSON and pulling in a TOML dependency for twenty lines of config was not the hill.
-
-The four settings most people change first. `concurrency.require_expect: warn` (writes succeed without `--expect`, conflicts still rejected, switch to `writes` for strict multi-agent coordination). `concurrency.default_on_conflict: full` (rejection payloads include full file content for files under 500 lines). `transactions.auto_rollback_idle_for: 10m` (idle transactions self-clean). `auto_prune.enabled: true` (the editor manages history retention so you don't). `workspace.auto_create: root-only` (auto-creates `.agented/` at the project root on first use, set to `true` to auto-create anywhere, `false` to require explicit `ae init`).
-
-`ae config show --source` prints the resolved configuration with the source file for each value. `ae config set <key> <value>` writes one key. `ae config edit` opens the file when you have more changes than that.
-
-Defaults are good enough that you don't need to touch any of this on day one.
-## IDE mode (optional)
-
-`ae lsp` runs a daemon that hosts language servers and exposes their analysis to the agent through additional verbs. Symbol navigation, reference finding, definitions, plus diagnostics riding along on save and edit responses. Multiple servers per language are supported (e.g. `typescript-language-server` for tsc errors plus `vscode-eslint-language-server` for lint findings); the first server in the list answers structural queries, all configured servers contribute diagnostics tagged by source.
-
-The daemon is opt-in. Set `ide.enabled: true` in `.agented/config.json`, configure the languages you want under `ide.languages`, and `ae` handles the rest: the daemon starts on first IDE-relevant verb in a session, hosts the LSPs, writes diagnostics to the workspace's SQLite as it gets them, and tears down on `ae lsp stop`.
-
-### The four verbs
-
-```sh
-ae sy internal/lsp/wire.go
-# sym  type    internal/lsp/wire.go:24:6   Request
-# sym  func    internal/lsp/wire.go:61:6   DecodeRequest
-# sym  func    internal/lsp/wire.go:96:6   EncodeResponses
-# ...
-
-ae find -s DecodeRequest                     # where is it defined?
-# def  internal/lsp/wire.go:61:6   DecodeRequest   func
-
-ae find -R DecodeRequest                     # who calls it?
-# ref  internal/lsp/wire.go:68:10  call  return DecodeRequest(r)
-# ref  internal/lsp/daemon.go:293:15 call req, err := DecodeRequest(r)
-# ref  internal/lsp/wire_test.go:23:15 call got, err := DecodeRequest(...)
-
-ae find -D DecodeRequest -A foo.go:120:15    # cursor-anchored definition
-# def  internal/lsp/wire.go:61:6   DecodeRequest
-```
-
-`ae find -R` returns one structured line per use site with usage classification (`call` / `read` / `write` / `import` / `definition` / `other`) and the matching line of code. Compare to `grep -rn "DecodeRequest"`: same answer shape, but ae's is bound to the actual symbol the LSP knows about, not text matches.
-
-### Diagnostics
-
-When IDE mode is on, mutating verbs (`ae save`, `ae replace`, `ae apply`, ...) include `diag` lines in their responses when the language server has findings cached for the file:
-
-```
-ok    state_token=ab12cd34
-diag  warn   foo.go:89:4    unused variable x       lint
-diag  error  foo.go:47:12   undefined: bar          compile
-```
-
-Severities are fixed: `error | warn | info | hint`. Per-call filter via `--diagnostics`/`-G` (`errors|warnings|all|none`); `--no-diagnostics`/`-N` to suppress. Default in config is `errors`. The absence of `diag` lines means *one* of: no findings, LSP hasn't analyzed yet, language not configured, daemon not running. It does not mean "the file is clean".
-
-### The daemon
-
-You don't normally manage it yourself. With `ide.enabled: true` and `ide.auto_start_daemon: true` (default), the first IDE-relevant verb in a session starts the daemon in the background. Subsequent calls are fast.
-
-```sh
-ae lsp status                # one line per language: state, pid, last_error
-ae lsp --background          # explicit background spawn
-ae lsp stop                  # graceful shutdown
-ae lsp logs                  # tail .agented/lsp.log
-```
-
-`--no-auto-lsp` on any verb skips the auto-spawn (power-user safety).
-
-Existing verbs keep working with or without IDE mode. When the daemon is up, mutating verbs pick up diagnostic lines in their responses; when it's down, they don't. The agent never has to know whether the daemon is running for normal editing flow.
-
-### When the daemon doesn't behave: `ae lsp doctor`
-
-LSP setups break in unsurprising ways. The binary isn't installed. It's installed but not on the daemon's PATH because the daemon was spawned from a non-mise/non-asdf shell. The eslint server is up and reports `ready`, but there's no `.eslintrc` in the project so it never produces diagnostics. The Cargo workspace is one directory up from where ae's workspace root resolved. None of these crash anything; they all just produce silence and a confused agent.
-
-`ae lsp doctor [language]` walks the failure modes per language and reports them in a tab-delimited table. Without a language argument it covers everything in `ide.languages`.
-
-```sh
-ae lsp doctor typescript
-# doctor  ide         enabled       -                ok    true
-# doctor  typescript  auto_start    -                ok    true
-# doctor  typescript  binary        tsserver         ok    /Users/.../typescript-language-server (5.1.3)
-# doctor  typescript  binary        eslint           fail  "vscode-eslint-language-server" not on PATH
-# doctor  typescript  config        package.json     ok    /repo/package.json
-# doctor  typescript  config        tsconfig.json    ok    /repo/tsconfig.json
-# doctor  typescript  config        eslint           warn  no .eslintrc.* found; eslint will spawn but report no diagnostics
-# doctor  typescript  deps          node_modules     ok    /repo/node_modules
-# doctor  typescript  daemon        tsserver         ok    pid=12345 state=ready
-# doctor  typescript  daemon        eslint           warn  no lsp_status row; daemon may not have spawned this server yet
-```
-
-Result column is one of `ok | warn | fail | info`. Per-language checks:
-
-| Language   | Binaries probed (default config)                          | Config files looked for                                                                |
-|------------|-----------------------------------------------------------|----------------------------------------------------------------------------------------|
-| go         | `gopls`                                                   | `go.mod` (required), `go.sum`                                                          |
-| typescript | `typescript-language-server`, `vscode-eslint-language-server` | `package.json` (required), `tsconfig.json`, `.eslintrc.*` family, `node_modules/`     |
-| python     | `pyright-langserver`, `ruff`                              | `pyproject.toml` / `setup.py` / `setup.cfg`, `pyrightconfig.json`, venv (`$VIRTUAL_ENV`, `.venv/`, `venv/`) |
-| rust       | `rust-analyzer`                                           | `Cargo.toml` (required), `rust-toolchain.toml`                                         |
-
-Doctor doesn't change anything. It reads the resolved config, walks the filesystem, runs `<bin> --version` with a 2-second timeout, and queries the `lsp_status` table. Run it before assuming `lsp_unavailable` is a daemon bug; nine times out of ten it's a missing config file or a PATH issue.
-
-### Multiple servers per language
-
-A language can name a list of servers. The first answers symbol/reference/definition queries; all of them contribute diagnostics tagged by server name in the `diag` lines.
-
-```json
-{
-  "ide": {
-    "enabled": true,
-    "languages": {
-      "typescript": {
-        "auto_start": true,
-        "servers": [
-          { "name": "tsserver", "command": "typescript-language-server", "args": ["--stdio"] },
-          { "name": "eslint",   "command": "vscode-eslint-language-server", "args": ["--stdio"] }
-        ]
-      },
-      "python": {
-        "auto_start": true,
-        "servers": [
-          { "name": "pyright", "command": "pyright-langserver", "args": ["--stdio"] },
-          { "name": "ruff",    "command": "ruff", "args": ["server"] }
-        ]
-      }
-    }
-  }
-}
-```
-
-Built-in defaults already wire `tsserver + eslint` for TypeScript and `pyright + ruff` for Python. Set `auto_start: true` on the language to use them; install the LSP binaries first (`npm install -g typescript-language-server vscode-eslint-language-server`, `pip install pyright ruff`).
-
-`ae lsp status` shows one row per `(language, server)` pair:
-
-```
-lsp  go         gopls    ready  pid=12345
-lsp  typescript tsserver ready  pid=12346
-lsp  typescript eslint   ready  pid=12347
-```
-
-The legacy single-server form (`{"server": "gopls", "auto_start": true}`) from v0.3.0/v0.3.1 still works.
-
-
-v0.3.0 ships with Go (`gopls`) wired up and validated. TypeScript and Python should work via config but treat them as alpha. Rust and others are config-only for now (the daemon will spawn whatever's configured but per-language quirks aren't tested).
-
-## Build and tests
-
-```sh
-make test
-make test-property
-make lint
-make build
-make release
-make bench
-```
-
-The property tests are where the real correctness work lives. The storage layer does line-splice math under compression with periodic snapshots, and marks recompute their positions across edits without rereading content. Both are the kind of code where bugs hide for years if all you have is happy-path unit tests. The property tests run random edit sequences against an in-memory oracle and catch the drift.
-
-`make bench` benchmarks `ae` against the built-in Read/Edit/Write tools across a representative set of editing scenarios and writes the results to `test/benchmark/results.md`. Token counts are reproducible across runs. Latency varies. Once landed, the README quotes the headline number from there instead of from a hand-wavy estimate.
-
-## Status
-
-v0.1. One author. Running it daily in my own work, which finds the real bugs eventually but isn't the same as being battle-tested at scale. Issues welcome.
+Apache 2.0.
