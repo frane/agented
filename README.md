@@ -8,33 +8,42 @@ Take ed, the line editor that nobody has voluntarily used since about 1975, and 
 
 > ⏺ ae remembers what my last session was doing, which is more than I can say for me.
 
-— Claude Code
+*— Claude Code*
 
 > • ae feels slower to start than plain file edits, but once a change spans
 > multiple steps, the state tokens, history, and undo tree make the work feel
 > much less brittle.
 
-— Codex CLI
+*— Codex CLI*
 
 ## Install
+
+Homebrew (macOS, Linux):
+
+```sh
+brew tap frane/tap
+brew install agented
+```
+
+curl (any platform):
 
 ```sh
 curl -sSL https://raw.githubusercontent.com/frane/agented/master/install.sh | sh
 ```
 
-That detects the platform, downloads the matching release binary, and drops it in `~/.local/bin/`. On macOS or Linux with Homebrew, `brew tap frane/tap && brew install agented` gets you a signed binary that auto-updates. From source, `go install github.com/frane/agented/cmd/ae@latest` or clone and `make install`. Pure Go, no cgo, single static binary, Apache 2.0.
+From source: `go install github.com/frane/agented/cmd/ae@latest`, or clone and `make install`. Pure Go, no cgo, single static binary, Apache 2.0.
 
-## Start
+## Getting started
 
 ```sh
 ae skill install
 ```
 
-That writes a `SKILL.md` into every detected agent's skills directory: Claude, Codex, Cursor, OpenClaw, the canonical `~/.agents/`. The next time your agent opens a file, it does it with `ae open <file>` instead of reaching for Read, and the skill teaches the rest. Once the skill is in place, you mostly stop thinking about ae and let the agent drive.
+That writes a `SKILL.md` into every detected agent's skills directory: Claude, Codex, Cursor, OpenClaw, the canonical `~/.agents/`. The skill teaches the agent how to drive ae.
 
-## A taste
+You still need to tell the agent to use it. Even with the skill installed, agents fall back to built-in Read and Edit out of habit, so something like "use ae for all file edits" in your system prompt or your first message is what keeps them on it.
 
-The shape that justifies the editor is recovery. The agent makes thirty edits over an hour, you walk away, come back to find it went off the rails around edit 18, but edits 19 through 23 are still useful. With a linear undo stack the choice would be "rollback the entire batch or live with the bad version." With ae's tree, the abandoned work is still addressable by edit id, you walk back to the last good state, and the wrong path stays in the tree in case you ever want to look at it again.
+Once the agent is on ae, the shape that justifies the editor is recovery. The agent makes thirty edits over an hour, you walk away, come back to find it went off the rails around edit 18, but edits 19 through 23 are still useful:
 
 ```sh
 ae br foo.go                             # see the leaves, current head is the bad one
@@ -43,19 +52,19 @@ ae v foo.go                              # confirm what's there
 ae s foo.go -r 40:42 -w "..." -x <token> # continue forward, creates a sibling branch
 ```
 
-That scenario is the case the rest of the design rests on. Most editing sessions never need to walk a branch, but the few that do are the ones where the alternative is throwing away an hour of work.
+With linear undo this scenario is "rollback the entire batch or live with the bad version." With the tree it's a `head --edit` and a `view`.
 
 ## Features
 
-- **Read once, edit forever.** Built-in `Edit` requires a `Read` first because its contract has no concept of file state, so a 1000-line file with one 5-line change costs ten thousand tokens of re-read on every session. `ae open` returns a few dozen bytes of metadata and a state token, and every write checks the token; a stale token comes back as exit code 3 with the new content attached. You reconcile in one round trip instead of pre-reading every time.
-- **An undo tree, not an undo stack.** Linear undo throws away the branch you walked back from, which is fine when a person is editing but expensive when an agent runs six refactors before picking one. ae keeps every branch addressable by edit id, so the abandoned work is still there if you decide it was actually the better path.
-- **Three-way merge that returns structured conflicts.** Two agents on the same file usually means one of them silently overwrites the other. `ae merge` walks back to the lowest common ancestor, applies non-overlapping changes automatically, and hands back the conflicts as ranges with both sides attached, ready for a single `--resolve` call per conflict.
-- **Atomic batches without a transaction protocol.** Multi-file refactors through `Edit` are N round trips with a half-applied state if any one fails. `ae apply` runs the whole batch in one call, all-or-nothing, and accepts whichever input format is densest for the situation: shortform for hand-written batches, longform for fixtures, JSON-lines for tool output.
-- **Cross-file moves and regex replace as primitives, not workarounds.** `Edit`'s addressing model can't express "cut this range and put it in another file" or "replace every regex match" without a sequence of careful single-file calls. `ae move` and `ae replace --pattern` do each in one verb.
-- **Auto-save with drift detection.** External edits to a file ae has open would silently get clobbered by the next write, which is a real failure mode when the agent shares a workspace with a human's editor. ae stat-s the file before every write; on detected drift the disk content is loaded as a new branch first, so the external change is recoverable from the tree instead of being lost.
-- **Inline diagnostics on every save.** Without LSP integration, an agent learns a file has a type error or an undefined symbol the next time it runs the build, often many edits later, and the fix has to walk back through everything stacked on top of the broken state. With `ide.enabled`, mutating verbs return `diag` lines from the language server right after the edit, so the agent sees the compile error or lint finding immediately and fixes it before stacking more changes. The same daemon answers `ae symbols`, `ae find --references`, and `ae find --definition` through the LSP instead of grep.
-- **Annotations as a handoff between sessions.** An agent's working memory ends when its session ends, and the next session has no idea what the previous one was doing. Annotations are per-file notes the next `ae open` returns inline, so a Codex session at 4pm picks up where Claude Code at 11am left off without you having to summarise.
-- **Audit log that survives the session.** When two agents share the workspace and one of them moves the head into a state you don't recognise, `ae log <path>` shows which actor did what when. Useful for both debugging and the rare argument about which agent broke the build.
+- **Read once, edit forever.** Built-in `Edit` makes you re-read the file before every write. ae returns a state token on read; the next write checks it, and on conflict you get the new content back in one round trip.
+- **Undo tree, not undo stack.** Linear undo loses the branch you walked back from. ae keeps every branch addressable by edit id, so the abandoned work is still there.
+- **Three-way merge.** Two agents on one file usually means a silent overwrite. `ae merge` walks back to the common ancestor and hands you structured conflicts.
+- **Atomic batches.** Multi-file refactors through `Edit` are N round trips with half-applied state on failure. `ae apply` runs the whole batch in one call, all-or-nothing.
+- **Cross-file moves and regex replace.** `Edit` can't express "cut a range and put it in another file" or "replace every regex match." `ae move` and `ae replace --pattern` do each in one verb.
+- **Auto-save with drift detection.** External edits would get clobbered by the next write. ae stat-s the file first and loads the disk content as a new branch instead.
+- **Inline diagnostics on every save.** Without LSP integration, the agent learns about a type error at the next build, many edits later. With `ide.enabled`, mutating verbs return `diag` lines from the language server right after the edit.
+- **Annotations as session handoff.** An agent's working memory dies with its session. Annotations are per-file notes the next `ae open` returns inline, so the next session reads them automatically.
+- **Audit log.** When two agents share the workspace and one moves the head into a state you don't recognise, `ae log <path>` shows who did what when.
 
 ## Skill and MCP
 
