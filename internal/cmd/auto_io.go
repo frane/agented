@@ -90,6 +90,9 @@ func (e *Engine) autoLoadIfDrifted(fi *store.FileInfo) (loaded bool, reason stri
 // "force": save unconditionally — same as clean in this code path. Kept
 // as a distinct value so future divergent semantics can attach.
 func (e *Engine) autoSaveAfterEdit(fi *store.FileInfo, head string) (saved bool, err error) {
+	if e.suppressAutosave {
+		return false, nil
+	}
 	mode := e.Config.Concurrency.AutoSave
 	if mode == "off" {
 		return false, nil
@@ -146,4 +149,26 @@ func (e *Engine) finishWriteIO(fi *store.FileInfo, headContent string, drifted b
 	}
 	saved, err = e.autoSaveAfterEdit(freshFI, headContent)
 	return saved, drifted, driftReason, err
+}
+
+// flushHead is the convenience used by Move and Apply (multi-file): given
+// the file_id of a file the store just updated, look up the fresh
+// FileInfo and head content, run the standard autoSaveAfterEdit, return
+// flushHead writes the current head to disk for the given file_id.
+// Returns true on success. Wraps autoSaveAfterEdit with the boilerplate
+// of fetching the fresh FileInfo and head content.
+func flushHead(e *Engine, fileID int64) bool {
+	fi, err := e.Store.FileByID(fileID)
+	if err != nil || fi == nil {
+		return false
+	}
+	head, err := e.Store.HeadContent(fileID)
+	if err != nil {
+		return false
+	}
+	saved, err := e.autoSaveAfterEdit(fi, head)
+	if err != nil {
+		return false
+	}
+	return saved
 }

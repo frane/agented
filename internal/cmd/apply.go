@@ -81,6 +81,13 @@ func (e *Engine) Apply(in ApplyInput) (*Result, error) {
 		}
 		implicit = true
 	}
+	// Suppress per-op autosaves. With the in-loop autosaves disabled,
+	// a failure rolls back the store and disk stays at the pre-batch
+	// state. After successful loop completion we flush every touched
+	// file once. Bug #4: previously each successful op fsync'd before
+	// the next op could fail, leaving disk half-applied.
+	e.suppressAutosave = true
+	defer func() { e.suppressAutosave = false }()
 	var lastEditID int64
 	var lastToken string
 	perFile := map[string]*ApplyFileResult{}
@@ -174,6 +181,16 @@ func (e *Engine) Apply(in ApplyInput) (*Result, error) {
 	if implicit {
 		if _, cerr := e.Store.TransactionCommit(e.Actor); cerr != nil {
 			return nil, cerr
+		}
+	}
+	// Flush every touched file once. Honors concurrency.auto_save: "off"
+	// via the suppress flag interaction (we lift the suppression before
+	// flushing so the regular autoSaveAfterEdit checks the config).
+	e.suppressAutosave = false
+	for _, p := range pathOrder {
+		fi, ferr := e.Store.FileByPath(p, true)
+		if ferr == nil && fi != nil {
+			_ = flushHead(e, fi.ID)
 		}
 	}
 	files := make([]string, 0, len(pathOrder))

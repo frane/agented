@@ -94,15 +94,22 @@ func (e *Engine) Move(in MoveInput) (*Result, error) {
 			return nil, cerr
 		}
 	}
+	// Autosave both files. The store has the new heads; flush them so
+	// disk matches. Bug #3: cross-file move was leaving disk stale.
+	srcSaved := flushHead(e, srcFI.ID)
+	dstSaved := flushHead(e, dstFI.ID)
+	saved := srcSaved && dstSaved
 	return &Result{
 		FileID:     &srcFI.ID,
 		EditID:     &insRes.NewEditID,
 		StateToken: insRes.NewStateToken,
 		Edit: &EditResult{
+			Path:         srcFI.Path,
 			NewEditID:    insRes.NewEditID,
 			NewHeadID:    insRes.NewHeadID,
 			LineDelta:    delRes.LineDelta + insRes.LineDelta,
 			NewLineCount: insRes.NewLineCount,
+			Saved:        saved,
 		},
 		Warning: fmt.Sprintf("moved %d lines from %s to %s",
 			in.FromEnd-in.FromStart+1, srcFI.Path, dstFI.Path),
@@ -169,15 +176,18 @@ func (e *Engine) moveSameFile(fi *store.FileInfo, content, moved string, in Move
 			return nil, cerr
 		}
 	}
+	saved := flushHead(e, fi.ID)
 	return &Result{
 		FileID:     &fi.ID,
 		EditID:     &insRes.NewEditID,
 		StateToken: insRes.NewStateToken,
 		Edit: &EditResult{
+			Path:         fi.Path,
 			NewEditID:    insRes.NewEditID,
 			NewHeadID:    insRes.NewHeadID,
 			LineDelta:    delRes.LineDelta + insRes.LineDelta,
 			NewLineCount: insRes.NewLineCount,
+			Saved:        saved,
 		},
 		Warning: fmt.Sprintf("moved %d lines within %s",
 			in.FromEnd-in.FromStart+1, fi.Path),

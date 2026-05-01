@@ -17,6 +17,14 @@ type Engine struct {
 	Config *config.Config
 	Actor  string
 	DBPath string
+
+	// suppressAutosave, when true, makes autoSaveAfterEdit a no-op even
+	// for verbs that would normally flush. Apply sets this for the
+	// duration of a multi-op batch so per-op autosaves do not commit
+	// half-applied state to disk if a later op fails. The batch flushes
+	// every touched file once on success, atomically from the disk-side
+	// observer's perspective.
+	suppressAutosave bool
 }
 
 // Result is the canonical return type for verb invocations. Different verbs

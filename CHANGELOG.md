@@ -2,6 +2,19 @@
 
 All notable changes to agented are documented here. The format is based on [Keep a Changelog](https://keepachangelog.com), and the project follows [Semantic Versioning](https://semver.org).
 
+## [v0.3.9] - 2026-05-01
+
+### Fixes
+
+- **`ae move` now flushes to disk** ([#3](https://github.com/frane/agented/issues/3)). Previously the store-layer move succeeded and reported success, but the new head was never auto-saved; `ae status` showed `state=dirty` immediately after the call. Both same-file and cross-file branches now run the standard autosave; cross-file flushes both source and destination. Result also gains `Edit.Path` and `Edit.Saved`.
+- **`ae apply -M` is atomic across files** ([#4](https://github.com/frane/agented/issues/4)). Previously the per-op autosave fired before the next op had a chance to fail, so a failure in op N left ops 0..N-1 written to disk while the store rolled back. Apply now suppresses per-op autosave for the duration of the batch and flushes every touched file once after the implicit commit. On failure no disk writes happen.
+
+### Tests
+
+- `TestMoveAutosaveSameFile`, `TestMoveAutosaveCrossFile`: pin the autosave behavior for both move branches.
+- `TestApplyMultiFileAtomicityOnFailure`: pin the multi-file rollback behavior using the bug-report repro.
+- `TestApplyMultiFileSuccessFlushes`: confirm the success path still writes to disk for every touched file.
+
 ## [v0.3.8] - 2026-04-30
 
 ### Release engineering
