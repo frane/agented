@@ -58,9 +58,6 @@ awk '
       print "        tap: frane/tap"
       print "        formula: agented"
       print "        bins: [ae]"
-      print "      - kind: go"
-      print "        package: github.com/frane/agented/cmd/ae@latest"
-      print "        bins: [ae]"
       injected = 1
     }
   }
