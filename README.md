@@ -16,6 +16,18 @@ Take ed, the line editor that nobody has voluntarily used since about 1975, and 
 
 *— Codex CLI*
 
+## Features
+
+- **Fewer round trips.** Read-before-Edit is unnecessary; on conflict the response carries the new content so you reconcile in one call instead of pre-reading every time.
+- **Branching undo.** Walked-back work stays addressable instead of being thrown away when you pick a different path.
+- **Three-way merge.** Concurrent agents get a structured conflict response instead of a silent overwrite.
+- **Atomic batches.** Multi-file refactors run all-or-nothing instead of leaving half-applied state on failure.
+- **Cross-file moves and regex replace as primitives.** Operations the built-in tools can't express cleanly become single calls.
+- **Drift detection.** External edits to an open file are folded into the tree instead of being clobbered by the next write.
+- **Inline diagnostics.** Type errors and lint findings surface on save, not at the next build many edits later.
+- **Cross-session memory.** Per-file notes persist between sessions and surface inline on the next open.
+- **Audit log.** Every operation recorded with actor and timestamp, so two agents in one workspace can't argue about who moved the head.
+
 ## Install
 
 Homebrew (macOS, Linux):
@@ -53,18 +65,6 @@ ae s foo.go -r 40:42 -w "..." -x <token> # continue forward, creates a sibling b
 ```
 
 With linear undo this scenario is "rollback the entire batch or live with the bad version." With the tree it's a `head --edit` and a `view`.
-
-## Features
-
-- **Read once, edit forever.** Built-in `Edit` makes you re-read the file before every write. ae returns a state token on read; the next write checks it, and on conflict you get the new content back in one round trip.
-- **Undo tree, not undo stack.** Linear undo loses the branch you walked back from. ae keeps every branch addressable by edit id, so the abandoned work is still there.
-- **Three-way merge.** Two agents on one file usually means a silent overwrite. `ae merge` walks back to the common ancestor and hands you structured conflicts.
-- **Atomic batches.** Multi-file refactors through `Edit` are N round trips with half-applied state on failure. `ae apply` runs the whole batch in one call, all-or-nothing.
-- **Cross-file moves and regex replace.** `Edit` can't express "cut a range and put it in another file" or "replace every regex match." `ae move` and `ae replace --pattern` do each in one verb.
-- **Auto-save with drift detection.** External edits would get clobbered by the next write. ae stat-s the file first and loads the disk content as a new branch instead.
-- **Inline diagnostics on every save.** Without LSP integration, the agent learns about a type error at the next build, many edits later. With `ide.enabled`, mutating verbs return `diag` lines from the language server right after the edit.
-- **Annotations as session handoff.** An agent's working memory dies with its session. Annotations are per-file notes the next `ae open` returns inline, so the next session reads them automatically.
-- **Audit log.** When two agents share the workspace and one moves the head into a state you don't recognise, `ae log <path>` shows who did what when.
 
 ## Skill and MCP
 
