@@ -107,6 +107,9 @@ var agentsCanonical = Agent{
 var claudeCode = Agent{
 	Name: "claude",
 	Detect: func() (bool, string) {
+		if pathIsFile(homeSubdir(".claude.json")) {
+			return true, ""
+		}
 		if pathIsDir(homeSubdir(".claude")) {
 			return true, ""
 		}
@@ -332,6 +335,17 @@ func pathIsDir(p string) bool {
 		return false
 	}
 	return fi.IsDir()
+}
+
+func pathIsFile(p string) bool {
+	if p == "" {
+		return false
+	}
+	fi, err := os.Stat(p)
+	if err != nil {
+		return false
+	}
+	return !fi.IsDir()
 }
 
 // ---- JSON-shape MCP helpers (Claude, Cursor, Gemini, Claude Desktop) ----
