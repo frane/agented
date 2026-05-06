@@ -1,25 +1,19 @@
 // Package mcpinstall installs / lists / uninstalls the agented MCP server in
-// each supported MCP client's config. Mirrors the Target-driven design used
-// by internal/skill, internal/rules, and internal/permissions so adding a new
-// client is a one-line append to Targets.
+// each supported client's config. The list of clients comes from the unified
+// internal/agents registry, so adding a client is a one-place change there.
 package mcpinstall
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
-	"os/exec"
-	"path/filepath"
-	"runtime"
+
+	"github.com/frane/agented/internal/agents"
 )
 
 // ServerName is the MCP-server entry name written into client configs.
 const ServerName = "agented"
 
-// Scope discriminates global vs project install paths. Some targets only
-// support one scope; the package surfaces a clear skip message when the
-// requested scope isn't applicable.
+// Scope discriminates global vs project install paths.
 type Scope int
 
 const (
@@ -47,30 +41,52 @@ type Result struct {
 	Status Status
 	Path   string
 	Reason string
-	Server map[string]any // the server entry that would be written
+	Server map[string]any
 }
 
-// Target describes one MCP-config destination.
+// Target is the MCP-install view of one agent. Built from agents.All — adding
+// a client means adding it there, not here.
 type Target struct {
 	Name        string
 	GlobalPath  func() (string, error)
 	ProjectPath func(workspace string) string
 	Detect      func() (bool, string)
-	// Apply writes the agented entry into path. Returns true if the file
-	// changed (i.e. entry was added or updated).
+
+	// Apply writes the agented entry into path. Returns true if changed.
 	Apply func(path string, server map[string]any) (changed bool, err error)
-	// Remove strips the agented entry from path. Returns true if the file
-	// changed. Idempotent: missing file or absent entry returns (false, nil).
+	// Remove strips the agented entry from path. Idempotent.
 	Remove func(path string) (changed bool, err error)
 	// Inspect reads the current entry, returning nil if absent.
 	Inspect func(path string) (entry map[string]any, err error)
 }
 
-// Targets is the source-of-truth ordered list. Append to add a client.
-var Targets = []Target{
-	claudeCodeTarget,
-	claudeDesktopTarget,
-	codexTarget,
+// Targets is the source-of-truth ordered list, derived from agents.All.
+var Targets = buildTargets()
+
+func buildTargets() []Target {
+	out := make([]Target, 0, len(agents.All))
+	for _, a := range agents.All {
+		if !a.HasMCP() {
+			continue
+		}
+		ag := a // capture; closures below need a per-iteration binding
+		out = append(out, Target{
+			Name:        ag.Name,
+			GlobalPath:  ag.MCPGlobal,
+			ProjectPath: ag.MCPProject,
+			Detect:      ag.Detect,
+			Apply: func(path string, server map[string]any) (bool, error) {
+				return ag.MCPApply(path, ServerName, server)
+			},
+			Remove: func(path string) (bool, error) {
+				return ag.MCPRemove(path, ServerName)
+			},
+			Inspect: func(path string) (map[string]any, error) {
+				return ag.MCPInspect(path, ServerName)
+			},
+		})
+	}
+	return out
 }
 
 // FindTarget returns the named target or nil.
@@ -102,11 +118,10 @@ func ServerEntry(command string, args []string) map[string]any {
 	if args == nil {
 		args = []string{"serve"}
 	}
-	out := map[string]any{
+	return map[string]any{
 		"command": command,
 		"args":    anyArray(args),
 	}
-	return out
 }
 
 // Install installs the agented MCP server in each selected target.
@@ -241,230 +256,10 @@ func resolvePath(t *Target, scope Scope, workspace string) (string, error) {
 	return "", fmt.Errorf("unknown scope %d", scope)
 }
 
-// claudeCodeTarget — Claude Code stores MCP servers in ~/.claude.json. Project
-// scope writes a project-local .mcp.json file (the format Claude Code reads
-// when present in the workspace root).
-var claudeCodeTarget = Target{
-	Name: "claude-code",
-	GlobalPath: func() (string, error) {
-		home, err := os.UserHomeDir()
-		if err != nil || home == "" {
-			return "", fmt.Errorf("claude-code: no home directory")
-		}
-		return filepath.Join(home, ".claude.json"), nil
-	},
-	ProjectPath: func(workspace string) string {
-		return filepath.Join(workspace, ".mcp.json")
-	},
-	Detect: func() (bool, string) {
-		home, _ := os.UserHomeDir()
-		if home != "" {
-			if _, err := os.Stat(filepath.Join(home, ".claude.json")); err == nil {
-				return true, ""
-			}
-			if fi, err := os.Stat(filepath.Join(home, ".claude")); err == nil && fi.IsDir() {
-				return true, ""
-			}
-		}
-		if _, err := exec.LookPath("claude"); err == nil {
-			return true, ""
-		}
-		return false, "no install detected"
-	},
-	Apply: func(path string, server map[string]any) (bool, error) {
-		root, err := readJSONObject(path)
-		if err != nil {
-			return false, err
-		}
-		mcp, _ := root["mcpServers"].(map[string]any)
-		if mcp == nil {
-			mcp = map[string]any{}
-		}
-		existing, _ := mcp[ServerName].(map[string]any)
-		if jsonEqual(existing, server) {
-			return false, nil
-		}
-		mcp[ServerName] = server
-		root["mcpServers"] = mcp
-		return true, writeJSONObject(path, root)
-	},
-	Remove: func(path string) (bool, error) {
-		root, err := readJSONObject(path)
-		if err != nil {
-			if os.IsNotExist(err) {
-				return false, nil
-			}
-			return false, err
-		}
-		mcp, _ := root["mcpServers"].(map[string]any)
-		if mcp == nil {
-			return false, nil
-		}
-		if _, present := mcp[ServerName]; !present {
-			return false, nil
-		}
-		delete(mcp, ServerName)
-		root["mcpServers"] = mcp
-		return true, writeJSONObject(path, root)
-	},
-	Inspect: func(path string) (map[string]any, error) {
-		root, err := readJSONObject(path)
-		if err != nil {
-			return nil, err
-		}
-		mcp, _ := root["mcpServers"].(map[string]any)
-		if mcp == nil {
-			return nil, nil
-		}
-		entry, _ := mcp[ServerName].(map[string]any)
-		if entry == nil {
-			return nil, nil
-		}
-		return entry, nil
-	},
-}
-
-// claudeDesktopTarget — Claude Desktop stores MCP servers in
-// ~/Library/Application Support/Claude/claude_desktop_config.json on macOS,
-// %APPDATA%\Claude\claude_desktop_config.json on Windows, and
-// ~/.config/Claude/claude_desktop_config.json on Linux. Same JSON shape as
-// the documentation example. User-scoped only.
-var claudeDesktopTarget = Target{
-	Name:        "claude-desktop",
-	ProjectPath: nil,
-	GlobalPath: func() (string, error) {
-		home, err := os.UserHomeDir()
-		if err != nil || home == "" {
-			return "", fmt.Errorf("claude-desktop: no home directory")
-		}
-		return claudeDesktopConfigPath(home), nil
-	},
-	Detect: func() (bool, string) {
-		home, _ := os.UserHomeDir()
-		if home == "" {
-			return false, "no home directory"
-		}
-		dir := filepath.Dir(claudeDesktopConfigPath(home))
-		if fi, err := os.Stat(dir); err == nil && fi.IsDir() {
-			return true, ""
-		}
-		return false, "no Claude Desktop config dir"
-	},
-	Apply: func(path string, server map[string]any) (bool, error) {
-		root, err := readJSONObject(path)
-		if err != nil {
-			return false, err
-		}
-		mcp, _ := root["mcpServers"].(map[string]any)
-		if mcp == nil {
-			mcp = map[string]any{}
-		}
-		existing, _ := mcp[ServerName].(map[string]any)
-		if jsonEqual(existing, server) {
-			return false, nil
-		}
-		mcp[ServerName] = server
-		root["mcpServers"] = mcp
-		return true, writeJSONObject(path, root)
-	},
-	Remove: func(path string) (bool, error) {
-		root, err := readJSONObject(path)
-		if err != nil {
-			if os.IsNotExist(err) {
-				return false, nil
-			}
-			return false, err
-		}
-		mcp, _ := root["mcpServers"].(map[string]any)
-		if mcp == nil {
-			return false, nil
-		}
-		if _, present := mcp[ServerName]; !present {
-			return false, nil
-		}
-		delete(mcp, ServerName)
-		root["mcpServers"] = mcp
-		return true, writeJSONObject(path, root)
-	},
-	Inspect: func(path string) (map[string]any, error) {
-		root, err := readJSONObject(path)
-		if err != nil {
-			return nil, err
-		}
-		mcp, _ := root["mcpServers"].(map[string]any)
-		if mcp == nil {
-			return nil, nil
-		}
-		entry, _ := mcp[ServerName].(map[string]any)
-		if entry == nil {
-			return nil, nil
-		}
-		return entry, nil
-	},
-}
-
-// claudeDesktopConfigPath returns the per-OS config location.
-func claudeDesktopConfigPath(home string) string {
-	switch runtime.GOOS {
-	case "darwin":
-		return filepath.Join(home, "Library", "Application Support", "Claude", "claude_desktop_config.json")
-	case "windows":
-		appdata := os.Getenv("APPDATA")
-		if appdata != "" {
-			return filepath.Join(appdata, "Claude", "claude_desktop_config.json")
-		}
-		return filepath.Join(home, "AppData", "Roaming", "Claude", "claude_desktop_config.json")
-	default:
-		return filepath.Join(home, ".config", "Claude", "claude_desktop_config.json")
-	}
-}
-
-func readJSONObject(path string) (map[string]any, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return map[string]any{}, nil
-		}
-		return nil, err
-	}
-	if len(data) == 0 {
-		return map[string]any{}, nil
-	}
-	var out map[string]any
-	if err := json.Unmarshal(data, &out); err != nil {
-		return nil, fmt.Errorf("parse %s: %w", path, err)
-	}
-	if out == nil {
-		out = map[string]any{}
-	}
-	return out, nil
-}
-
-func writeJSONObject(path string, v map[string]any) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return err
-	}
-	out, err := json.MarshalIndent(v, "", "  ")
-	if err != nil {
-		return err
-	}
-	out = append(out, '\n')
-	return os.WriteFile(path, out, 0o644)
-}
-
 func anyArray(s []string) []any {
 	out := make([]any, 0, len(s))
 	for _, x := range s {
 		out = append(out, x)
 	}
 	return out
-}
-
-func jsonEqual(a, b map[string]any) bool {
-	if a == nil || b == nil {
-		return false
-	}
-	ab, _ := json.Marshal(a)
-	bb, _ := json.Marshal(b)
-	return string(ab) == string(bb)
 }

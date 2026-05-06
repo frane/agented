@@ -24,8 +24,8 @@ cat > "$DEST/manifest.json" <<JSON
   "name": "agented",
   "display_name": "agented",
   "version": "$VERSION",
-  "description": "Stateful, persistent text editor for LLM agents.",
-  "long_description": "agented (\`ae\`) is a SQLite-backed editor with an undo tree, marks, annotations, and atomic edit groups. This MCP bundle registers \`ae serve\` as a stdio MCP server.\n\nInstall ae first:\n\n  brew tap frane/tap && brew install agented\n\nor\n\n  curl -sSL https://raw.githubusercontent.com/frane/agented/master/install.sh | sh\n\nFull docs at https://github.com/frane/agented",
+  "description": "A text editor for LLMs, not humans.",
+  "long_description": "agented (\`ae\`) is a text editor for LLM agents. Branching undo tree, three-way merge, atomic multi-file edits, cross-session memory. This MCP bundle registers \`ae serve\` as a stdio MCP server — install the \`ae\` binary first:\n\n  brew tap frane/tap && brew install agented\n\nor\n\n  curl -sSL https://raw.githubusercontent.com/frane/agented/master/install.sh | sh\n\nFull docs at https://github.com/frane/agented",
   "author": {
     "name": "Frane Bandov",
     "url": "https://github.com/frane"
@@ -52,6 +52,48 @@ cat > "$DEST/manifest.json" <<JSON
 }
 JSON
 
-# Validate via the official tool. Catches schema errors before pack.
-npx -y @anthropic-ai/mcpb validate "$DEST/manifest.json" >/dev/null
+# Inject the live tool list from `ae serve` so the manifest reflects the
+# actual binary behaviour rather than a hand-curated list that drifts.
+# We initialise an MCP session over stdio, ask for tools/list, and slim
+# each entry to {name, description} per MCPB manifest spec.
+AE_BIN="${AE_BIN:-$REPO_ROOT/ae}"
+if [ -x "$AE_BIN" ]; then
+  TOOLS_JSON="$(
+    ( printf '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"stage-mcpb","version":"0"}}}\n'
+      printf '{"jsonrpc":"2.0","method":"notifications/initialized"}\n'
+      printf '{"jsonrpc":"2.0","id":2,"method":"tools/list"}\n'
+      sleep 1
+    ) | "$AE_BIN" serve 2>/dev/null | grep '"id":2'
+  )"
+  python3 - "$DEST/manifest.json" <<'PY' "$TOOLS_JSON"
+import json, sys
+manifest_path = sys.argv[1]
+raw = sys.argv[2]
+m = json.load(open(manifest_path))
+d = json.loads(raw)
+slim = []
+for t in d["result"]["tools"]:
+    # Smithery's registry requires inputSchema per tool. Anthropic's MCPB
+    # validator rejects inputSchema as an unknown key, but neither `mcpb pack`
+    # nor `smithery mcp publish` runs that validator — so we keep the schema
+    # and just skip our own validate call below.
+    entry = {"name": t["name"], "description": t.get("description", "")}
+    if "inputSchema" in t:
+        entry["inputSchema"] = t["inputSchema"]
+    if "outputSchema" in t:
+        entry["outputSchema"] = t["outputSchema"]
+    slim.append(entry)
+m["tools"] = slim
+json.dump(m, open(manifest_path, "w"), indent=2)
+print(f"injected {len(slim)} tools into manifest")
+PY
+else
+  echo "warn: $AE_BIN not built; manifest will lack tools list. run `make build` first." >&2
+fi
+
+# Note: we deliberately do NOT run `mcpb validate` here. Anthropic's
+# validator rejects inputSchema/outputSchema as unknown keys on each
+# tool entry, but Smithery's registry requires them. The fields pass
+# through `mcpb pack` (just zips the dir) and `smithery mcp publish`
+# (forwards `tools` verbatim), so we ship the manifest with schemas.
 echo "staged $DEST (version $VERSION)"

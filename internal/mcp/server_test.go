@@ -25,7 +25,12 @@ import (
 func newTestClient(t *testing.T) (*mcpclient.Client, *cmd.Engine, string) {
 	t.Helper()
 	dir := t.TempDir()
-	conn, err := db.Open(filepath.Join(dir, "state.db"))
+	wsDir := filepath.Join(dir, ".agented")
+	if err := os.MkdirAll(wsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	dbPath := filepath.Join(wsDir, "state.db")
+	conn, err := db.Open(dbPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -34,10 +39,15 @@ func newTestClient(t *testing.T) (*mcpclient.Client, *cmd.Engine, string) {
 		Store:  store.New(conn),
 		Config: config.Defaults(),
 		Actor:  "tester",
-		DBPath: filepath.Join(dir, "state.db"),
+		DBPath: dbPath,
 	}
+	pool := cmd.NewPool(cmd.PoolOptions{Actor: "tester"})
+	if err := pool.Register(wsDir, engine); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = pool.Close() })
 	srv := mserver.NewMCPServer("agented", "test", mserver.WithToolCapabilities(false))
-	mcp.RegisterTools(srv, engine)
+	mcp.RegisterTools(srv, pool, os.Stderr)
 	cli, err := mcpclient.NewInProcessClient(srv)
 	if err != nil {
 		t.Fatal(err)

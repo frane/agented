@@ -2,6 +2,34 @@
 
 All notable changes to agented are documented here. The format is based on [Keep a Changelog](https://keepachangelog.com), and the project follows [Semantic Versioning](https://semver.org).
 
+## [v0.4.0] - 2026-05-06
+
+### Features
+
+- **Multi-workspace MCP**. `ae serve` is no longer locked to a single workspace at startup. A new `cmd.Pool` lazily resolves an Engine per `.agented/` dir, keyed by the absolute path argument on each tool call, so one global MCP server registration (Claude Desktop, Codex Desktop, Cursor) handles every project the user touches. Tool calls without an absolute path fall back to a default workspace (the one resolved from cwd at startup, when there is one). Paths outside any project workspace error loudly with a `run \`ae init\`` suggestion instead of silently using the global fallback.
+- **Per-workspace LSP daemons**. The LSP daemon model follows the same shape: each workspace gets its own daemon, lazily spawned on the first write that targets it. `lsp.SpawnBackground` and `lsp.EnsureDaemon` are now in the `lsp` package (used by both CLI and MCP), and spawn explicitly with `--workspace-dir <wsDir>` so the daemon attaches to the right project regardless of the parent process's cwd. New `Engine.NotifyLSPIfWrite` hook is invoked from MCP after every successful tool call.
+- **Per-LSP `init_options` pass-through**. `IDEServerCfg.InitOptions` (a free-form `map[string]any`) is forwarded verbatim as the LSP `initialize` request's `initializationOptions` field. ae does no validation; the schema is whatever the server accepts. Closes the recurring "rust-analyzer / clippy / linkedProjects" round-trip — users can drop `init_options: { check: { command: "clippy" } }` directly into ae's config instead of wrangling a separate `rust-analyzer.toml`.
+- **Unified `internal/agents` registry**. The skill-target list (`internal/skill/targets.go`) and MCP-install-target list (`internal/mcpinstall`) used to duplicate per-agent definitions for Claude, Codex, Cursor, Gemini, OpenClaw. They now both build their slices from a single source of truth in `internal/agents/agents.go` — adding a new client is a one-place change.
+- **Gemini CLI integration**. New target across both surfaces: `ae skill install --target gemini` writes to `~/.gemini/extensions/agented/GEMINI.md` plus a sibling `gemini-extension.json` so Gemini recognises the directory; `ae mcp install --target gemini` writes the agented entry to `~/.gemini/settings.json`.
+
+### Fixes
+
+- **rust-analyzer "Failed to discover workspace"**. `SpawnClient` now sets `cmd.Dir = workspaceRoot` on the LSP child process. rust-analyzer (and several other servers) discover the project from cwd, not from `rootUri` alone. The bug surfaced as silent diagnostic loss whenever `ae lsp` was started from a subdirectory; users would round-trip clippy errors through cargo because nothing came back as `diag` lines.
+- **`ae lsp doctor` Cargo.toml message**. When the workspace dir doesn't contain `Cargo.toml`, the doctor used to say "missing in workspace root: …" which is misleading — Cargo.toml may exist higher up. Updated to point at the workspace-root mismatch and suggest either moving `.agented/` or using `init_options.linkedProjects`.
+
+### Defaults
+
+- **`ide.diagnostics.default` is now `warnings`** (was `errors`). The previous default dropped warn/info/hint lines, which silently hid the bulk of useful LSP output (clippy, unused imports, type warnings). Users who want the old strict-errors-only behavior can set it back, or pass `-G errors` per call.
+
+### Documentation
+
+- New section in `docs/ide.md` on per-server `init_options`, with the rust-analyzer/clippy example.
+- New section in `docs/mcp.md` on workspace routing in multi-workspace serve mode.
+
+### Tests
+
+- `TestPoolMultiWorkspaceRouting`: one MCP server, two `.agented/` workspaces, paths route correctly; stray-path opens reject loudly.
+
 ## [v0.3.9] - 2026-05-01
 
 ### Fixes

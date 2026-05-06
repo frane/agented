@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 
 	mcpgo "github.com/mark3labs/mcp-go/mcp"
 	mserver "github.com/mark3labs/mcp-go/server"
@@ -12,10 +13,11 @@ import (
 )
 
 // RegisterTools wires every CLI verb to an MCP tool. Tool names use the
-// `ae_<verb>` convention. Exported for in-process tests; mcp.Serve calls it
-// internally via registerTools (alias kept for backwards-compatible private use).
-func RegisterTools(s *mserver.MCPServer, e *cmd.Engine) {
-	pathArg := mcpgo.WithString("path", mcpgo.Description("File path"), mcpgo.Required())
+// `ae_<verb>` convention. Each handler resolves its target Engine from the
+// Pool using the call's path argument, falling back to the Pool's default
+// workspace when no path is supplied. Exported for in-process tests.
+func RegisterTools(s *mserver.MCPServer, pool *cmd.Pool, stderr io.Writer) {
+	pathArg := mcpgo.WithString("path", mcpgo.Description("File path (absolute paths route to the workspace owning that path; relative paths use the server's default workspace)"), mcpgo.Required())
 
 	// open
 	s.AddTool(
@@ -23,13 +25,13 @@ func RegisterTools(s *mserver.MCPServer, e *cmd.Engine) {
 			mcpgo.WithDescription("Register a file in the workspace; returns annotations and state_token inline."),
 			pathArg,
 		),
-		toolHandler(func(args map[string]any) (cmd.OpenInput, error) {
+		poolHandler(func(args map[string]any) (string, cmd.OpenInput, error) {
 			path, _ := args["path"].(string)
 			if path == "" {
-				return cmd.OpenInput{}, errors.New("path required")
+				return "", cmd.OpenInput{}, errors.New("path required")
 			}
-			return cmd.OpenInput{Path: path}, nil
-		}, e.Open),
+			return path, cmd.OpenInput{Path: path}, nil
+		}, pool, stderr, (*cmd.Engine).Open),
 	)
 
 	// close
@@ -38,24 +40,26 @@ func RegisterTools(s *mserver.MCPServer, e *cmd.Engine) {
 			mcpgo.WithDescription("Soft-close a file."),
 			pathArg,
 		),
-		toolHandler(func(args map[string]any) (cmd.CloseInput, error) {
+		poolHandler(func(args map[string]any) (string, cmd.CloseInput, error) {
 			path, _ := args["path"].(string)
-			return cmd.CloseInput{Path: path}, nil
-		}, e.Close),
+			return path, cmd.CloseInput{Path: path}, nil
+		}, pool, stderr, (*cmd.Engine).Close),
 	)
 
 	// list
 	s.AddTool(
 		mcpgo.NewTool("ae_list",
-			mcpgo.WithDescription("List registered files."),
+			mcpgo.WithDescription("List registered files (uses default workspace unless workspace_path supplied)."),
 			mcpgo.WithString("mode", mcpgo.Description("open | closed | all")),
 			mcpgo.WithBoolean("stale", mcpgo.Description("Annotate stale buffers")),
+			mcpgo.WithString("workspace_path", mcpgo.Description("Absolute path inside the workspace to scope this call to (overrides default)")),
 		),
-		toolHandler(func(args map[string]any) (cmd.ListInput, error) {
+		poolHandler(func(args map[string]any) (string, cmd.ListInput, error) {
 			mode, _ := args["mode"].(string)
 			stale, _ := args["stale"].(bool)
-			return cmd.ListInput{Mode: mode, Stale: stale}, nil
-		}, e.List),
+			ws, _ := args["workspace_path"].(string)
+			return ws, cmd.ListInput{Mode: mode, Stale: stale}, nil
+		}, pool, stderr, (*cmd.Engine).List),
 	)
 
 	// status
@@ -65,11 +69,11 @@ func RegisterTools(s *mserver.MCPServer, e *cmd.Engine) {
 			mcpgo.WithString("path", mcpgo.Description("Optional file path")),
 			mcpgo.WithBoolean("storage", mcpgo.Description("Include storage report")),
 		),
-		toolHandler(func(args map[string]any) (cmd.StatusInput, error) {
+		poolHandler(func(args map[string]any) (string, cmd.StatusInput, error) {
 			path, _ := args["path"].(string)
 			storage, _ := args["storage"].(bool)
-			return cmd.StatusInput{Path: path, Storage: storage}, nil
-		}, e.Status),
+			return path, cmd.StatusInput{Path: path, Storage: storage}, nil
+		}, pool, stderr, (*cmd.Engine).Status),
 	)
 
 	// view
@@ -80,12 +84,12 @@ func RegisterTools(s *mserver.MCPServer, e *cmd.Engine) {
 			mcpgo.WithNumber("start", mcpgo.Description("Range start (1-indexed)")),
 			mcpgo.WithNumber("end", mcpgo.Description("Range end (inclusive)")),
 		),
-		toolHandler(func(args map[string]any) (cmd.ViewInput, error) {
+		poolHandler(func(args map[string]any) (string, cmd.ViewInput, error) {
 			path, _ := args["path"].(string)
 			start := numberArg(args, "start")
 			end := numberArg(args, "end")
-			return cmd.ViewInput{Path: path, Start: start, End: end}, nil
-		}, e.View),
+			return path, cmd.ViewInput{Path: path, Start: start, End: end}, nil
+		}, pool, stderr, (*cmd.Engine).View),
 	)
 
 	// search
@@ -96,14 +100,14 @@ func RegisterTools(s *mserver.MCPServer, e *cmd.Engine) {
 			mcpgo.WithString("pattern", mcpgo.Description("RE2 pattern"), mcpgo.Required()),
 			mcpgo.WithNumber("limit", mcpgo.Description("Max matches; 0 = default 100")),
 		),
-		toolHandler(func(args map[string]any) (cmd.SearchInput, error) {
+		poolHandler(func(args map[string]any) (string, cmd.SearchInput, error) {
 			path, _ := args["path"].(string)
 			pattern, _ := args["pattern"].(string)
 			if pattern == "" {
-				return cmd.SearchInput{}, errors.New("pattern required")
+				return "", cmd.SearchInput{}, errors.New("pattern required")
 			}
-			return cmd.SearchInput{Path: path, Pattern: pattern, Limit: numberArg(args, "limit")}, nil
-		}, e.Search),
+			return path, cmd.SearchInput{Path: path, Pattern: pattern, Limit: numberArg(args, "limit")}, nil
+		}, pool, stderr, (*cmd.Engine).Search),
 	)
 
 	// find (cross-file regex search across the workspace)
@@ -113,15 +117,17 @@ func RegisterTools(s *mserver.MCPServer, e *cmd.Engine) {
 			mcpgo.WithString("pattern", mcpgo.Description("RE2 pattern"), mcpgo.Required()),
 			mcpgo.WithNumber("limit", mcpgo.Description("Max total matches across files; 0 = default 200")),
 			mcpgo.WithBoolean("include_closed", mcpgo.Description("Include closed files in the search")),
+			mcpgo.WithString("workspace_path", mcpgo.Description("Absolute path inside the workspace to scope this call to (overrides default)")),
 		),
-		toolHandler(func(args map[string]any) (cmd.FindInput, error) {
+		poolHandler(func(args map[string]any) (string, cmd.FindInput, error) {
 			pattern, _ := args["pattern"].(string)
 			if pattern == "" {
-				return cmd.FindInput{}, errors.New("pattern required")
+				return "", cmd.FindInput{}, errors.New("pattern required")
 			}
 			ic, _ := args["include_closed"].(bool)
-			return cmd.FindInput{Pattern: pattern, Limit: numberArg(args, "limit"), IncludeClosed: ic}, nil
-		}, e.Find),
+			ws, _ := args["workspace_path"].(string)
+			return ws, cmd.FindInput{Pattern: pattern, Limit: numberArg(args, "limit"), IncludeClosed: ic}, nil
+		}, pool, stderr, (*cmd.Engine).Find),
 	)
 
 	// diff
@@ -132,14 +138,14 @@ func RegisterTools(s *mserver.MCPServer, e *cmd.Engine) {
 			mcpgo.WithNumber("from", mcpgo.Description("Edit id (default: parent of head)")),
 			mcpgo.WithNumber("to", mcpgo.Description("Edit id (default: head)")),
 		),
-		toolHandler(func(args map[string]any) (cmd.DiffInput, error) {
+		poolHandler(func(args map[string]any) (string, cmd.DiffInput, error) {
 			path, _ := args["path"].(string)
-			return cmd.DiffInput{
+			return path, cmd.DiffInput{
 				Path: path,
 				From: int64(numberArg(args, "from")),
 				To:   int64(numberArg(args, "to")),
 			}, nil
-		}, e.Diff),
+		}, pool, stderr, (*cmd.Engine).Diff),
 	)
 
 	// log
@@ -150,11 +156,11 @@ func RegisterTools(s *mserver.MCPServer, e *cmd.Engine) {
 			mcpgo.WithNumber("limit", mcpgo.Description("Max entries (default 50)")),
 			mcpgo.WithString("actor", mcpgo.Description("Filter by actor")),
 		),
-		toolHandler(func(args map[string]any) (cmd.LogInput, error) {
+		poolHandler(func(args map[string]any) (string, cmd.LogInput, error) {
 			path, _ := args["path"].(string)
 			actor, _ := args["actor"].(string)
-			return cmd.LogInput{Path: path, Limit: numberArg(args, "limit"), Actor: actor}, nil
-		}, e.Log),
+			return path, cmd.LogInput{Path: path, Limit: numberArg(args, "limit"), Actor: actor}, nil
+		}, pool, stderr, (*cmd.Engine).Log),
 	)
 
 	// replace
@@ -169,13 +175,13 @@ func RegisterTools(s *mserver.MCPServer, e *cmd.Engine) {
 			mcpgo.WithBoolean("auto_open", mcpgo.Description("Auto-open the file")),
 			mcpgo.WithBoolean("no_transaction", mcpgo.Description("Bypass transaction owner check")),
 		),
-		toolHandler(func(args map[string]any) (cmd.ReplaceInput, error) {
+		poolHandler(func(args map[string]any) (string, cmd.ReplaceInput, error) {
 			path, _ := args["path"].(string)
 			with, _ := args["with"].(string)
 			expect, _ := args["expect"].(string)
 			autoOpen, _ := args["auto_open"].(bool)
 			noTx, _ := args["no_transaction"].(bool)
-			return cmd.ReplaceInput{
+			return path, cmd.ReplaceInput{
 				Path:          path,
 				Start:         numberArg(args, "start"),
 				End:           numberArg(args, "end"),
@@ -184,7 +190,7 @@ func RegisterTools(s *mserver.MCPServer, e *cmd.Engine) {
 				NoTransaction: noTx,
 				AutoOpen:      autoOpen,
 			}, nil
-		}, e.Replace),
+		}, pool, stderr, (*cmd.Engine).Replace),
 	)
 
 	// insert
@@ -198,13 +204,13 @@ func RegisterTools(s *mserver.MCPServer, e *cmd.Engine) {
 			mcpgo.WithBoolean("auto_open", mcpgo.Description("Auto-open the file")),
 			mcpgo.WithBoolean("no_transaction", mcpgo.Description("Bypass transaction owner check")),
 		),
-		toolHandler(func(args map[string]any) (cmd.InsertInput, error) {
+		poolHandler(func(args map[string]any) (string, cmd.InsertInput, error) {
 			path, _ := args["path"].(string)
 			text, _ := args["text"].(string)
 			expect, _ := args["expect"].(string)
 			autoOpen, _ := args["auto_open"].(bool)
 			noTx, _ := args["no_transaction"].(bool)
-			return cmd.InsertInput{
+			return path, cmd.InsertInput{
 				Path:          path,
 				After:         numberArg(args, "after"),
 				Text:          text,
@@ -212,7 +218,7 @@ func RegisterTools(s *mserver.MCPServer, e *cmd.Engine) {
 				NoTransaction: noTx,
 				AutoOpen:      autoOpen,
 			}, nil
-		}, e.Insert),
+		}, pool, stderr, (*cmd.Engine).Insert),
 	)
 
 	// delete
@@ -226,12 +232,12 @@ func RegisterTools(s *mserver.MCPServer, e *cmd.Engine) {
 			mcpgo.WithBoolean("auto_open", mcpgo.Description("Auto-open the file")),
 			mcpgo.WithBoolean("no_transaction", mcpgo.Description("Bypass transaction owner check")),
 		),
-		toolHandler(func(args map[string]any) (cmd.DeleteInput, error) {
+		poolHandler(func(args map[string]any) (string, cmd.DeleteInput, error) {
 			path, _ := args["path"].(string)
 			expect, _ := args["expect"].(string)
 			autoOpen, _ := args["auto_open"].(bool)
 			noTx, _ := args["no_transaction"].(bool)
-			return cmd.DeleteInput{
+			return path, cmd.DeleteInput{
 				Path:          path,
 				Start:         numberArg(args, "start"),
 				End:           numberArg(args, "end"),
@@ -239,7 +245,7 @@ func RegisterTools(s *mserver.MCPServer, e *cmd.Engine) {
 				NoTransaction: noTx,
 				AutoOpen:      autoOpen,
 			}, nil
-		}, e.Delete),
+		}, pool, stderr, (*cmd.Engine).Delete),
 	)
 
 	// undo / redo / head
@@ -249,10 +255,10 @@ func RegisterTools(s *mserver.MCPServer, e *cmd.Engine) {
 			pathArg,
 			mcpgo.WithNumber("count", mcpgo.Description("Steps (default 1)")),
 		),
-		toolHandler(func(args map[string]any) (cmd.UndoInput, error) {
+		poolHandler(func(args map[string]any) (string, cmd.UndoInput, error) {
 			path, _ := args["path"].(string)
-			return cmd.UndoInput{Path: path, Count: numberArg(args, "count")}, nil
-		}, e.Undo),
+			return path, cmd.UndoInput{Path: path, Count: numberArg(args, "count")}, nil
+		}, pool, stderr, (*cmd.Engine).Undo),
 	)
 	s.AddTool(
 		mcpgo.NewTool("ae_redo",
@@ -260,10 +266,10 @@ func RegisterTools(s *mserver.MCPServer, e *cmd.Engine) {
 			pathArg,
 			mcpgo.WithNumber("count", mcpgo.Description("Steps (default 1)")),
 		),
-		toolHandler(func(args map[string]any) (cmd.RedoInput, error) {
+		poolHandler(func(args map[string]any) (string, cmd.RedoInput, error) {
 			path, _ := args["path"].(string)
-			return cmd.RedoInput{Path: path, Count: numberArg(args, "count")}, nil
-		}, e.Redo),
+			return path, cmd.RedoInput{Path: path, Count: numberArg(args, "count")}, nil
+		}, pool, stderr, (*cmd.Engine).Redo),
 	)
 	s.AddTool(
 		mcpgo.NewTool("ae_head",
@@ -271,14 +277,14 @@ func RegisterTools(s *mserver.MCPServer, e *cmd.Engine) {
 			pathArg,
 			mcpgo.WithNumber("edit_id", mcpgo.Description("Target edit id"), mcpgo.Required()),
 		),
-		toolHandler(func(args map[string]any) (cmd.HeadInput, error) {
+		poolHandler(func(args map[string]any) (string, cmd.HeadInput, error) {
 			path, _ := args["path"].(string)
 			id := int64(numberArg(args, "edit_id"))
 			if id == 0 {
-				return cmd.HeadInput{}, errors.New("edit_id required")
+				return "", cmd.HeadInput{}, errors.New("edit_id required")
 			}
-			return cmd.HeadInput{Path: path, EditID: id}, nil
-		}, e.Head),
+			return path, cmd.HeadInput{Path: path, EditID: id}, nil
+		}, pool, stderr, (*cmd.Engine).Head),
 	)
 
 	// branches
@@ -287,10 +293,10 @@ func RegisterTools(s *mserver.MCPServer, e *cmd.Engine) {
 			mcpgo.WithDescription("List leaf edits."),
 			pathArg,
 		),
-		toolHandler(func(args map[string]any) (cmd.BranchesInput, error) {
+		poolHandler(func(args map[string]any) (string, cmd.BranchesInput, error) {
 			path, _ := args["path"].(string)
-			return cmd.BranchesInput{Path: path}, nil
-		}, e.Branches),
+			return path, cmd.BranchesInput{Path: path}, nil
+		}, pool, stderr, (*cmd.Engine).Branches),
 	)
 
 	// marks
@@ -301,21 +307,21 @@ func RegisterTools(s *mserver.MCPServer, e *cmd.Engine) {
 			mcpgo.WithString("name", mcpgo.Description("Mark name"), mcpgo.Required()),
 			mcpgo.WithNumber("line", mcpgo.Description("1-indexed line"), mcpgo.Required()),
 		),
-		toolHandler(func(args map[string]any) (cmd.MarkAddInput, error) {
+		poolHandler(func(args map[string]any) (string, cmd.MarkAddInput, error) {
 			path, _ := args["path"].(string)
 			name, _ := args["name"].(string)
-			return cmd.MarkAddInput{Path: path, Name: name, Line: numberArg(args, "line")}, nil
-		}, e.MarkAdd),
+			return path, cmd.MarkAddInput{Path: path, Name: name, Line: numberArg(args, "line")}, nil
+		}, pool, stderr, (*cmd.Engine).MarkAdd),
 	)
 	s.AddTool(
 		mcpgo.NewTool("ae_mark_list",
 			mcpgo.WithDescription("List marks on a file."),
 			pathArg,
 		),
-		toolHandler(func(args map[string]any) (cmd.MarkListInput, error) {
+		poolHandler(func(args map[string]any) (string, cmd.MarkListInput, error) {
 			path, _ := args["path"].(string)
-			return cmd.MarkListInput{Path: path}, nil
-		}, e.MarkList),
+			return path, cmd.MarkListInput{Path: path}, nil
+		}, pool, stderr, (*cmd.Engine).MarkList),
 	)
 	s.AddTool(
 		mcpgo.NewTool("ae_mark_get",
@@ -323,11 +329,11 @@ func RegisterTools(s *mserver.MCPServer, e *cmd.Engine) {
 			pathArg,
 			mcpgo.WithString("name", mcpgo.Description("Mark name"), mcpgo.Required()),
 		),
-		toolHandler(func(args map[string]any) (cmd.MarkGetInput, error) {
+		poolHandler(func(args map[string]any) (string, cmd.MarkGetInput, error) {
 			path, _ := args["path"].(string)
 			name, _ := args["name"].(string)
-			return cmd.MarkGetInput{Path: path, Name: name}, nil
-		}, e.MarkGet),
+			return path, cmd.MarkGetInput{Path: path, Name: name}, nil
+		}, pool, stderr, (*cmd.Engine).MarkGet),
 	)
 	s.AddTool(
 		mcpgo.NewTool("ae_mark_remove",
@@ -335,11 +341,11 @@ func RegisterTools(s *mserver.MCPServer, e *cmd.Engine) {
 			pathArg,
 			mcpgo.WithString("name", mcpgo.Description("Mark name"), mcpgo.Required()),
 		),
-		toolHandler(func(args map[string]any) (cmd.MarkRemoveInput, error) {
+		poolHandler(func(args map[string]any) (string, cmd.MarkRemoveInput, error) {
 			path, _ := args["path"].(string)
 			name, _ := args["name"].(string)
-			return cmd.MarkRemoveInput{Path: path, Name: name}, nil
-		}, e.MarkRemove),
+			return path, cmd.MarkRemoveInput{Path: path, Name: name}, nil
+		}, pool, stderr, (*cmd.Engine).MarkRemove),
 	)
 
 	// annotations
@@ -349,11 +355,11 @@ func RegisterTools(s *mserver.MCPServer, e *cmd.Engine) {
 			pathArg,
 			mcpgo.WithString("content", mcpgo.Description("Annotation text"), mcpgo.Required()),
 		),
-		toolHandler(func(args map[string]any) (cmd.AnnotAddInput, error) {
+		poolHandler(func(args map[string]any) (string, cmd.AnnotAddInput, error) {
 			path, _ := args["path"].(string)
 			content, _ := args["content"].(string)
-			return cmd.AnnotAddInput{Path: path, Content: content}, nil
-		}, e.AnnotAdd),
+			return path, cmd.AnnotAddInput{Path: path, Content: content}, nil
+		}, pool, stderr, (*cmd.Engine).AnnotAdd),
 	)
 	s.AddTool(
 		mcpgo.NewTool("ae_annotate_list",
@@ -361,55 +367,67 @@ func RegisterTools(s *mserver.MCPServer, e *cmd.Engine) {
 			pathArg,
 			mcpgo.WithBoolean("include_removed", mcpgo.Description("Include removed annotations")),
 		),
-		toolHandler(func(args map[string]any) (cmd.AnnotListInput, error) {
+		poolHandler(func(args map[string]any) (string, cmd.AnnotListInput, error) {
 			path, _ := args["path"].(string)
 			r, _ := args["include_removed"].(bool)
-			return cmd.AnnotListInput{Path: path, IncludeRemoved: r}, nil
-		}, e.AnnotList),
+			return path, cmd.AnnotListInput{Path: path, IncludeRemoved: r}, nil
+		}, pool, stderr, (*cmd.Engine).AnnotList),
 	)
 	s.AddTool(
 		mcpgo.NewTool("ae_annotate_remove",
 			mcpgo.WithDescription("Soft-delete an annotation."),
 			mcpgo.WithNumber("id", mcpgo.Description("Annotation id"), mcpgo.Required()),
+			mcpgo.WithString("workspace_path", mcpgo.Description("Absolute path inside the workspace owning this annotation (annotations are workspace-scoped)")),
 		),
-		toolHandler(func(args map[string]any) (cmd.AnnotRemoveInput, error) {
+		poolHandler(func(args map[string]any) (string, cmd.AnnotRemoveInput, error) {
 			id := int64(numberArg(args, "id"))
-			return cmd.AnnotRemoveInput{ID: id}, nil
-		}, e.AnnotRemove),
+			ws, _ := args["workspace_path"].(string)
+			return ws, cmd.AnnotRemoveInput{ID: id}, nil
+		}, pool, stderr, (*cmd.Engine).AnnotRemove),
 	)
 	s.AddTool(
 		mcpgo.NewTool("ae_annotate_search",
 			mcpgo.WithDescription("Search annotations across files."),
 			mcpgo.WithString("query", mcpgo.Description("Substring to find"), mcpgo.Required()),
+			mcpgo.WithString("workspace_path", mcpgo.Description("Absolute path inside the workspace to search (overrides default)")),
 		),
-		toolHandler(func(args map[string]any) (cmd.AnnotSearchInput, error) {
+		poolHandler(func(args map[string]any) (string, cmd.AnnotSearchInput, error) {
 			q, _ := args["query"].(string)
-			return cmd.AnnotSearchInput{Query: q}, nil
-		}, e.AnnotSearch),
+			ws, _ := args["workspace_path"].(string)
+			return ws, cmd.AnnotSearchInput{Query: q}, nil
+		}, pool, stderr, (*cmd.Engine).AnnotSearch),
 	)
 
 	// transactions
 	s.AddTool(
 		mcpgo.NewTool("ae_begin",
 			mcpgo.WithDescription("Open a transaction."),
-			mcpgo.WithString("path", mcpgo.Description("Optional file scope")),
+			mcpgo.WithString("path", mcpgo.Description("Optional file scope; also selects workspace when path is absolute")),
 		),
-		toolHandler(func(args map[string]any) (cmd.BeginInput, error) {
+		poolHandler(func(args map[string]any) (string, cmd.BeginInput, error) {
 			p, _ := args["path"].(string)
-			return cmd.BeginInput{Path: p}, nil
-		}, e.Begin),
+			return p, cmd.BeginInput{Path: p}, nil
+		}, pool, stderr, (*cmd.Engine).Begin),
 	)
 	s.AddTool(
 		mcpgo.NewTool("ae_commit",
 			mcpgo.WithDescription("Commit the open transaction."),
+			mcpgo.WithString("workspace_path", mcpgo.Description("Absolute path inside the workspace whose transaction to commit (overrides default)")),
 		),
-		toolHandler(func(_ map[string]any) (cmd.CommitInput, error) { return cmd.CommitInput{}, nil }, e.Commit),
+		poolHandler(func(args map[string]any) (string, cmd.CommitInput, error) {
+			ws, _ := args["workspace_path"].(string)
+			return ws, cmd.CommitInput{}, nil
+		}, pool, stderr, (*cmd.Engine).Commit),
 	)
 	s.AddTool(
 		mcpgo.NewTool("ae_rollback",
 			mcpgo.WithDescription("Rollback the open transaction."),
+			mcpgo.WithString("workspace_path", mcpgo.Description("Absolute path inside the workspace whose transaction to rollback (overrides default)")),
 		),
-		toolHandler(func(_ map[string]any) (cmd.RollbackInput, error) { return cmd.RollbackInput{}, nil }, e.Rollback),
+		poolHandler(func(args map[string]any) (string, cmd.RollbackInput, error) {
+			ws, _ := args["workspace_path"].(string)
+			return ws, cmd.RollbackInput{}, nil
+		}, pool, stderr, (*cmd.Engine).Rollback),
 	)
 
 	// save / load
@@ -418,29 +436,33 @@ func RegisterTools(s *mserver.MCPServer, e *cmd.Engine) {
 			mcpgo.WithDescription("Write head content to disk."),
 			pathArg,
 		),
-		toolHandler(func(args map[string]any) (cmd.SaveInput, error) {
+		poolHandler(func(args map[string]any) (string, cmd.SaveInput, error) {
 			path, _ := args["path"].(string)
-			return cmd.SaveInput{Path: path}, nil
-		}, e.Save),
+			return path, cmd.SaveInput{Path: path}, nil
+		}, pool, stderr, (*cmd.Engine).Save),
 	)
 	s.AddTool(
 		mcpgo.NewTool("ae_load",
 			mcpgo.WithDescription("Reload from disk; creates a branch if changed."),
 			pathArg,
 		),
-		toolHandler(func(args map[string]any) (cmd.LoadInput, error) {
+		poolHandler(func(args map[string]any) (string, cmd.LoadInput, error) {
 			path, _ := args["path"].(string)
-			return cmd.LoadInput{Path: path}, nil
-		}, e.Load),
+			return path, cmd.LoadInput{Path: path}, nil
+		}, pool, stderr, (*cmd.Engine).Load),
 	)
 
-	// who
+	// who — actor identity is constant across the pool.
 	s.AddTool(
 		mcpgo.NewTool("ae_who",
 			mcpgo.WithDescription("Print current actor identity."),
 		),
 		func(ctx context.Context, req mcpgo.CallToolRequest) (*mcpgo.CallToolResult, error) {
-			r := e.Who()
+			engine, err := pool.Resolve("")
+			if err != nil {
+				return mcpgo.NewToolResultError(err.Error()), nil
+			}
+			r := engine.Who()
 			j, err := mcpgo.NewToolResultJSON(r)
 			if err != nil {
 				return mcpgo.NewToolResultError(err.Error()), nil

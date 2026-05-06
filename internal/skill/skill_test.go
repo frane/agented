@@ -309,6 +309,7 @@ func TestOpenClawTargetPresent(t *testing.T) {
 func TestOpenClawDetectViaHomeDir(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("HOME", dir)
+	t.Setenv("PATH", "")
 	got := skill.FindTarget("openclaw")
 	if got == nil {
 		t.Fatal("openclaw missing")

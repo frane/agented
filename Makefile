@@ -120,7 +120,11 @@ publish-smithery-skill: stage-skill
 
 publish-smithery-mcp: stage-mcpb
 	@command -v smithery >/dev/null 2>&1 || (echo "error: smithery CLI not on PATH. Install with: npm install -g @smithery/cli" >&2 ; exit 1)
-	npx -y @anthropic-ai/mcpb pack $(SMITHERY_MCPB_SRC) $(SMITHERY_MCPB)
+	# .mcpb is a plain zip per spec. We bypass `mcpb pack` because it
+	# rejects inputSchema on tool entries while Smithery's registry
+	# requires it. zip preserves the manifest verbatim.
+	rm -f $(SMITHERY_MCPB)
+	cd $(SMITHERY_MCPB_SRC) && zip -qr $(abspath $(SMITHERY_MCPB)) .
 	smithery mcp publish $(SMITHERY_MCPB) -n $(SMITHERY_NAMESPACE)/agented
 
 publish-all: publish-skill publish-smithery-skill publish-smithery-mcp

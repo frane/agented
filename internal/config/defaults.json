@@ -84,7 +84,7 @@
       ".py":  "python"
     },
     "diagnostics": {
-      "default": "errors",
+      "default": "warnings",
       "max_per_response": 50,
       "cache_ttl": "5m"
     }

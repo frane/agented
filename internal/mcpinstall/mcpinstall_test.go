@@ -23,7 +23,7 @@ func homeWith(t *testing.T) string {
 func TestInstallClaudeCodeFromScratch(t *testing.T) {
 	home := homeWith(t)
 	results, err := mcpinstall.Install(mcpinstall.InstallOptions{
-		Selected: "claude-code",
+		Selected: "claude",
 		Scope:    mcpinstall.ScopeGlobal,
 		Command:  "/path/to/ae",
 	})
@@ -57,7 +57,7 @@ func TestInstallIsIdempotent(t *testing.T) {
 	homeWith(t)
 	for i := 0; i < 2; i++ {
 		results, err := mcpinstall.Install(mcpinstall.InstallOptions{
-			Selected: "claude-code", Scope: mcpinstall.ScopeGlobal, Command: "ae",
+			Selected: "claude", Scope: mcpinstall.ScopeGlobal, Command: "ae",
 		})
 		if err != nil {
 			t.Fatal(err)
@@ -86,7 +86,7 @@ func TestInstallPreservesOtherMCPServers(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := mcpinstall.Install(mcpinstall.InstallOptions{
-		Selected: "claude-code", Scope: mcpinstall.ScopeGlobal, Command: "ae",
+		Selected: "claude", Scope: mcpinstall.ScopeGlobal, Command: "ae",
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -108,12 +108,12 @@ func TestInstallPreservesOtherMCPServers(t *testing.T) {
 func TestUninstallRemovesEntry(t *testing.T) {
 	homeWith(t)
 	if _, err := mcpinstall.Install(mcpinstall.InstallOptions{
-		Selected: "claude-code", Scope: mcpinstall.ScopeGlobal, Command: "ae",
+		Selected: "claude", Scope: mcpinstall.ScopeGlobal, Command: "ae",
 	}); err != nil {
 		t.Fatal(err)
 	}
 	results, err := mcpinstall.Uninstall(mcpinstall.UninstallOptions{
-		Selected: "claude-code", Scope: mcpinstall.ScopeGlobal,
+		Selected: "claude", Scope: mcpinstall.ScopeGlobal,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -122,7 +122,7 @@ func TestUninstallRemovesEntry(t *testing.T) {
 		t.Errorf("status=%s want removed", results[0].Status)
 	}
 	results2, _ := mcpinstall.Uninstall(mcpinstall.UninstallOptions{
-		Selected: "claude-code", Scope: mcpinstall.ScopeGlobal,
+		Selected: "claude", Scope: mcpinstall.ScopeGlobal,
 	})
 	if results2[0].Status != mcpinstall.StatusNotFound {
 		t.Errorf("second uninstall status=%s want not-found", results2[0].Status)
@@ -133,19 +133,19 @@ func TestListShowsInstallState(t *testing.T) {
 	homeWith(t)
 	pre := mcpinstall.List(mcpinstall.ScopeGlobal, "")
 	for _, r := range pre {
-		if r.Target == "claude-code" && r.Status != mcpinstall.StatusNotFound {
+		if r.Target == "claude" && r.Status != mcpinstall.StatusNotFound {
 			t.Errorf("expected claude-code not-found before install, got %s", r.Status)
 		}
 	}
 	if _, err := mcpinstall.Install(mcpinstall.InstallOptions{
-		Selected: "claude-code", Scope: mcpinstall.ScopeGlobal, Command: "ae",
+		Selected: "claude", Scope: mcpinstall.ScopeGlobal, Command: "ae",
 	}); err != nil {
 		t.Fatal(err)
 	}
 	post := mcpinstall.List(mcpinstall.ScopeGlobal, "")
 	found := false
 	for _, r := range post {
-		if r.Target == "claude-code" {
+		if r.Target == "claude" {
 			if r.Status != mcpinstall.StatusInstalled {
 				t.Errorf("expected installed after install, got %s", r.Status)
 			}
@@ -161,7 +161,7 @@ func TestProjectScopeWritesMcpJson(t *testing.T) {
 	homeWith(t)
 	ws := t.TempDir()
 	if _, err := mcpinstall.Install(mcpinstall.InstallOptions{
-		Selected:  "claude-code",
+		Selected:  "claude",
 		Scope:     mcpinstall.ScopeProject,
 		Workspace: ws,
 		Command:   "ae",
@@ -194,7 +194,7 @@ func TestClaudeDesktopProjectScopeIsSkip(t *testing.T) {
 func TestDryRunDoesNotWrite(t *testing.T) {
 	home := homeWith(t)
 	if _, err := mcpinstall.Install(mcpinstall.InstallOptions{
-		Selected: "claude-code", Scope: mcpinstall.ScopeGlobal, Command: "ae", DryRun: true,
+		Selected: "claude", Scope: mcpinstall.ScopeGlobal, Command: "ae", DryRun: true,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -230,8 +230,8 @@ func TestInstallAllOnlyWritesDetected(t *testing.T) {
 	for _, r := range results {
 		statusByName[r.Target] = r.Status
 	}
-	if statusByName["claude-code"] != mcpinstall.StatusInstalled {
-		t.Errorf("claude-code: %s want installed", statusByName["claude-code"])
+	if statusByName["claude"] != mcpinstall.StatusInstalled {
+		t.Errorf("claude-code: %s want installed", statusByName["claude"])
 	}
 	if statusByName["claude-desktop"] != mcpinstall.StatusSkipped {
 		t.Errorf("claude-desktop: %s want skipped", statusByName["claude-desktop"])

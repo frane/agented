@@ -95,6 +95,11 @@ func installOne(t *Target, opts InstallOptions) Result {
 			if err := writeSkill(path); err != nil {
 				return Result{Target: t.Name, Status: StatusError, Path: path, Reason: err.Error()}
 			}
+			if t.PostInstall != nil {
+				if err := t.PostInstall(path, Version); err != nil {
+					return Result{Target: t.Name, Status: StatusError, Path: path, Reason: err.Error()}
+				}
+			}
 			r.Status = StatusUpdated
 		}
 	default:
@@ -103,6 +108,11 @@ func installOne(t *Target, opts InstallOptions) Result {
 		} else {
 			if err := writeSkill(path); err != nil {
 				return Result{Target: t.Name, Status: StatusError, Path: path, Reason: err.Error()}
+			}
+			if t.PostInstall != nil {
+				if err := t.PostInstall(path, Version); err != nil {
+					return Result{Target: t.Name, Status: StatusError, Path: path, Reason: err.Error()}
+				}
 			}
 			r.Status = StatusInstalled
 		}

@@ -1,15 +1,12 @@
 package skill
 
 import (
-	"fmt"
-	"os"
-	"os/exec"
-	"path/filepath"
+	"github.com/frane/agented/internal/agents"
 )
 
-// Target describes a single skills-directory destination. The default Targets
-// slice drives the entire install/list/upgrade/uninstall surface; add a new
-// target by appending to it and the CLI, summaries, and tests pick it up.
+// Target describes a single skills-directory destination. The fields are
+// populated from the unified internal/agents registry — adding a new client
+// is a one-place change in `agents.All`, picked up here automatically.
 type Target struct {
 	// Name is the value the user passes to --target.
 	Name string
@@ -30,16 +27,35 @@ type Target struct {
 	// Detect returns (true, "") when the target's home dir or CLI binary is
 	// found, or (false, reason) when not.
 	Detect func() (bool, string)
+
+	// PostInstall, if set, runs after the SKILL.md is written. Used by
+	// Gemini to drop a sibling gemini-extension.json so the directory is
+	// recognised as an extension. Receives the path that was just written
+	// and the current SKILL.md version.
+	PostInstall func(path, version string) error
 }
 
-// Targets is the source-of-truth ordered list. Order matters for summary
-// output. Append (don't reorder) when adding a new target.
-var Targets = []Target{
-	agentsTarget,
-	claudeTarget,
-	codexTarget,
-	cursorTarget,
-	openclawTarget,
+// Targets is the source-of-truth ordered list, derived from agents.All. We
+// keep it as a slice (not a func) so the rest of the package can iterate
+// without indirection. Order matches agents.All.
+var Targets = buildTargets()
+
+func buildTargets() []Target {
+	out := make([]Target, 0, len(agents.All))
+	for _, a := range agents.All {
+		if !a.HasSkill() {
+			continue
+		}
+		out = append(out, Target{
+			Name:        a.Name,
+			AlwaysWrite: a.AlwaysWrite,
+			GlobalPath:  a.SkillGlobal,
+			ProjectPath: a.SkillProject,
+			Detect:      a.Detect,
+			PostInstall: a.SkillPostInstall,
+		})
+	}
+	return out
 }
 
 // FindTarget returns the Target with the given name, or nil if unknown.
@@ -50,135 +66,4 @@ func FindTarget(name string) *Target {
 		}
 	}
 	return nil
-}
-
-// agentsTarget — canonical cross-client skills location.
-var agentsTarget = Target{
-	Name:        "agents",
-	AlwaysWrite: true,
-	GlobalPath: func() (string, error) {
-		home, err := os.UserHomeDir()
-		if err != nil || home == "" {
-			return "", fmt.Errorf("agents: no home directory")
-		}
-		return filepath.Join(home, ".agents", "skills", "agented", "SKILL.md"), nil
-	},
-	ProjectPath: func(workspace string) string {
-		return filepath.Join(workspace, ".agents", "skills", "agented", "SKILL.md")
-	},
-	// agents has no detection: it's spec-canonical and always considered.
-	Detect: func() (bool, string) {
-		return false, "" // never used; AlwaysWrite forces it under --target all
-	},
-}
-
-// claudeTarget — Claude Code / Claude Desktop.
-var claudeTarget = Target{
-	Name: "claude",
-	GlobalPath: func() (string, error) {
-		home, err := os.UserHomeDir()
-		if err != nil || home == "" {
-			return "", fmt.Errorf("claude: no home directory")
-		}
-		return filepath.Join(home, ".claude", "skills", "agented", "SKILL.md"), nil
-	},
-	ProjectPath: func(workspace string) string {
-		return filepath.Join(workspace, ".claude", "skills", "agented", "SKILL.md")
-	},
-	Detect: func() (bool, string) {
-		if dir := homeSubdir(".claude"); dir != "" && pathIsDir(dir) {
-			return true, ""
-		}
-		if _, err := exec.LookPath("claude"); err == nil {
-			return true, ""
-		}
-		return false, "no install detected"
-	},
-}
-
-// codexTarget — Codex CLI. Codex also reads ~/.agents/skills/, so a separate
-// codex install is largely redundant; we expose it for explicit choice.
-var codexTarget = Target{
-	Name: "codex",
-	GlobalPath: func() (string, error) {
-		home, err := os.UserHomeDir()
-		if err != nil || home == "" {
-			return "", fmt.Errorf("codex: no home directory")
-		}
-		return filepath.Join(home, ".codex", "skills", "agented", "SKILL.md"), nil
-	},
-	ProjectPath: func(workspace string) string {
-		// Codex reads project skills only from .agents/skills/, which the
-		// agents target already handles. Project install is therefore a no-op.
-		return ""
-	},
-	Detect: func() (bool, string) {
-		if dir := homeSubdir(".codex"); dir != "" && pathIsDir(dir) {
-			return true, ""
-		}
-		if _, err := exec.LookPath("codex"); err == nil {
-			return true, ""
-		}
-		return false, "no install detected"
-	},
-}
-
-// cursorTarget — project-only; Cursor has no global skills location.
-var cursorTarget = Target{
-	Name:       "cursor",
-	GlobalPath: nil, // explicitly unsupported
-	ProjectPath: func(workspace string) string {
-		return filepath.Join(workspace, ".cursor", "skills", "agented", "SKILL.md")
-	},
-	Detect: func() (bool, string) {
-		// Detection is per-CWD: do we have a .cursor/ here, or is the cursor
-		// binary on PATH?
-		cwd, _ := os.Getwd()
-		if cwd != "" && pathIsDir(filepath.Join(cwd, ".cursor")) {
-			return true, ""
-		}
-		if _, err := exec.LookPath("cursor"); err == nil {
-			return true, ""
-		}
-		return false, "no install detected"
-	},
-}
-
-// openclawTarget — OpenClaw personal AI assistant. Skills live under
-// ~/.openclaw/workspace/skills/<name>/. User-scoped only (no project path).
-var openclawTarget = Target{
-	Name: "openclaw",
-	GlobalPath: func() (string, error) {
-		home, err := os.UserHomeDir()
-		if err != nil || home == "" {
-			return "", fmt.Errorf("openclaw: no home directory")
-		}
-		return filepath.Join(home, ".openclaw", "workspace", "skills", "agented", "SKILL.md"), nil
-	},
-	ProjectPath: nil,
-	Detect: func() (bool, string) {
-		if dir := homeSubdir(".openclaw"); dir != "" && pathIsDir(dir) {
-			return true, ""
-		}
-		if _, err := exec.LookPath("openclaw"); err == nil {
-			return true, ""
-		}
-		return false, "no install detected"
-	},
-}
-
-func homeSubdir(name string) string {
-	home, err := os.UserHomeDir()
-	if err != nil || home == "" {
-		return ""
-	}
-	return filepath.Join(home, name)
-}
-
-func pathIsDir(p string) bool {
-	fi, err := os.Stat(p)
-	if err != nil {
-		return false
-	}
-	return fi.IsDir()
 }

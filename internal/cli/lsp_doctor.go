@@ -221,7 +221,7 @@ func doctorConfigFiles(w io.Writer, lang, root string) {
 func checkRequiredFile(w io.Writer, lang, root, name, why string) {
 	p := filepath.Join(root, name)
 	if _, err := os.Stat(p); err != nil {
-		doctorRow(w, lang, "config", name, "fail", "missing in workspace root: "+why)
+		doctorRow(w, lang, "config", name, "fail", fmt.Sprintf("not at workspace root %s — %s. either move/recreate .agented/ at the project root, or pass linkedProjects via ide.languages.<lang>.servers[].init_options", root, why))
 		return
 	}
 	doctorRow(w, lang, "config", name, "ok", p)

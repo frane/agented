@@ -87,7 +87,7 @@ homebrew_casks:
     skip_upload: '{{ if eq .Env.HOMEBREW_TAP_GITHUB_TOKEN "" }}true{{ else }}auto{{ end }}'
     directory: Casks
     homepage: "https://github.com/frane/agented"
-    description: "Stateful, persistent text editor for LLM agents (verb-based, SQLite undo tree)."
+    description: "A text editor for LLMs, not humans."
     license: "Apache-2.0"
     url:
       # Avoid the homebrew-audit warning that download domain (github.com)
@@ -121,6 +121,6 @@ release:
   header: |
     ## agented {{.Tag}}
 
-    A text editor for LLMs.
+    A text editor for LLMs, not humans.
   footer: |
     **Full Changelog**: https://github.com/frane/agented/compare/{{ .PreviousTag }}...{{ .Tag }}

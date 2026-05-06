@@ -92,11 +92,16 @@ type coreDB = struct {
 
 // preRun resolves config/workspace/store/actor before each subcommand. We do
 // this here rather than in main so subcommands can run independently.
+//
+// `serve` is a special case: it can run without any workspace (the pool will
+// resolve per-call from absolute path arguments). We still try to find the
+// cwd workspace so it can be registered as the pool's default, but a missing
+// one is not fatal here.
 func (a *App) preRun(c *cobra.Command, args []string) error {
-	// Skip for the `init` and `version` and `who` and `config` subcommands
-	// when there's no workspace.
+	// Skip for the `init` and `version` subcommands when there's no workspace.
 	skip := map[string]bool{"init": true, "version": true}
 	name := c.Name()
+	serve := name == "serve"
 	if c.Parent() != nil && c.Parent().Name() == "config" {
 		// config subcommands don't need the engine fully wired (most don't).
 	}
@@ -131,7 +136,7 @@ func (a *App) preRun(c *cobra.Command, args []string) error {
 		filePath := firstAbsArg(args)
 		dir, _, err := workspace.LocateForFile(filePath, cwd, opts)
 		if err != nil {
-			if !skip[name] {
+			if !skip[name] && !serve {
 				return err
 			}
 		}
@@ -165,7 +170,13 @@ func (a *App) preRun(c *cobra.Command, args []string) error {
 		return nil
 	}
 
+	// `serve` tolerates a missing workspace: the pool lazily resolves from
+	// absolute path arguments. Leave a.engine nil so serve.go knows there
+	// is no default workspace to register.
 	if wsDir == "" {
+		if serve {
+			return nil
+		}
 		return errors.New("no workspace found and no global path; run `ae init`")
 	}
 	if err := workspace.EnsureDir(wsDir); err != nil {

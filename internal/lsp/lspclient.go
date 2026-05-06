@@ -114,10 +114,19 @@ type LSPDocumentSymbol struct {
 // initialize response, and returns a ready Client. The caller invokes
 // onPublish/onLog to be notified about diagnostics and stderr lines.
 func SpawnClient(ctx context.Context, command string, args []string, workspaceRoot string,
+	initOptions map[string]any,
 	onPublish func(uri string, version *int, diags []LSPDiagnostic),
 	onLog func(line string),
 ) (*Client, error) {
 	cmd := exec.CommandContext(ctx, command, args...)
+	// Anchor the server's cwd at the project root. rust-analyzer uses cwd
+	// (not rootUri alone) to find Cargo.toml; gopls uses cwd as a fallback
+	// when rootUri is missing; tsserver tolerates either. Setting cmd.Dir
+	// fixes the recurring "Failed to discover workspace" bug when the
+	// daemon was started from a subdirectory.
+	if workspaceRoot != "" {
+		cmd.Dir = workspaceRoot
+	}
 	cmd.Env = append(os.Environ(), "GOFLAGS=") // keep server's view clean
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
@@ -167,6 +176,9 @@ func SpawnClient(ctx context.Context, command string, args []string, workspaceRo
 				"workspaceFolders": true,
 			},
 		},
+	}
+	if len(initOptions) > 0 {
+		initParams["initializationOptions"] = initOptions
 	}
 	var initResult json.RawMessage
 	if err := c.call(ctx, "initialize", initParams, &initResult); err != nil {

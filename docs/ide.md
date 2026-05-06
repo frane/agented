@@ -37,7 +37,7 @@ diag  warn   foo.go:89:4    unused variable x       lint
 diag  error  foo.go:47:12   undefined: bar          compile
 ```
 
-Severities are fixed: `error | warn | info | hint`. Per-call filter via `--diagnostics`/`-G` (`errors|warnings|all|none`); `--no-diagnostics`/`-N` to suppress. Default in config is `errors`. The absence of `diag` lines means *one* of: no findings, LSP hasn't analyzed yet, language not configured, daemon not running. It does not mean "the file is clean".
+Severities are fixed: `error | warn | info | hint`. Per-call filter via `--diagnostics`/`-G` (`errors|warnings|all|none`); `--no-diagnostics`/`-N` to suppress. Default in config is `warnings` — errors plus warnings, which matches what most LSP servers actually emit (clippy lints, unused-import warnings, etc. show up as warn). The absence of `diag` lines means *one* of: no findings, LSP hasn't analyzed yet, language not configured, daemon not running. It does not mean "the file is clean".
 
 ## The daemon
 
@@ -122,6 +122,36 @@ lsp  go         gopls    ready  pid=12345
 lsp  typescript tsserver ready  pid=12346
 lsp  typescript eslint   ready  pid=12347
 ```
+
+## Per-server init options
+
+LSP servers each accept a different `initializationOptions` payload — gopls has its own keys, rust-analyzer has its own, pyright has its own. ae passes that payload through verbatim via `init_options` on a server entry; ae does no validation, the schema is whatever the server expects.
+
+```json
+{
+  "ide": {
+    "languages": {
+      "rust": {
+        "auto_start": true,
+        "servers": [
+          {
+            "name": "rust-analyzer",
+            "command": "rust-analyzer",
+            "init_options": {
+              "check": { "command": "clippy" }
+            }
+          }
+        ]
+      }
+    }
+  }
+}
+```
+
+That clippy snippet is the common one: by default rust-analyzer runs `cargo check` for diagnostics and only surfaces compile errors. Switching to `clippy` is strictly additive — you keep every error/warning and add the clippy lints on top, the only cost is a slightly slower check pass. Clippy mostly emits warn-severity, so the diagnostics filter has to allow warnings too (`ide.diagnostics.default = warnings` is now the shipped default; bump to `all` if you also want hints).
+
+The `rust-analyzer.toml` workspace-root file works the same way — drop it next to `Cargo.toml` and rust-analyzer picks it up. Pick whichever feels more natural; ae has no opinion.
+
 
 The legacy single-server form (`{"server": "gopls", "auto_start": true}`) from v0.3.0/v0.3.1 still works.
 

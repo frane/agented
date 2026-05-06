@@ -35,8 +35,17 @@ For other MCP clients (Cursor, Zed, Continue, Cline, custom agents using the MCP
 
 The server exposes one MCP tool per verb, prefixed `ae_`: `ae_open`, `ae_close`, `ae_list`, `ae_status`, `ae_view`, `ae_search`, `ae_find`, `ae_diff`, `ae_log`, `ae_replace`, `ae_insert`, `ae_delete`, `ae_undo`, `ae_redo`, `ae_head`, `ae_branches`, `ae_mark_add`, `ae_mark_list`, `ae_mark_get`, `ae_mark_remove`, `ae_annotate_add`, `ae_annotate_list`, `ae_annotate_remove`, `ae_annotate_search`, `ae_begin`, `ae_commit`, `ae_rollback`, `ae_save`, `ae_load`, `ae_who`. Arguments mirror the CLI flags. The state-token contract is identical, including the conflict response with full file content.
 
-## Workspace discovery
+## Workspace routing
 
-The MCP path uses the same workspace as the CLI. Switching between MCP and CLI mid-session is fine. Both write to the same `.agented/` and see the same head, branches, and annotations.
+A single `ae serve` process can serve any number of projects. Each tool call routes to the workspace owning the call's path argument:
 
-Workspace discovery happens once when `ae serve` starts, walking up from the subprocess's working directory. Claude Code spawns subprocesses from the project dir, so discovery hits the local `.agented/`. Claude Desktop spawns from `$HOME`, so the global `~/.agented/` becomes the workspace. To pin a specific workspace regardless of cwd, add `"args": ["serve", "--workspace-dir", "/abs/path/.agented"]` to the client config. For absolute file paths in `ae open`, discovery follows the file's directory rather than cwd, so most cases work without the override.
+- **Absolute path** → walk up from the file's directory to the nearest `.agented/`. Loud error if none is found ("run `ae init` in the project root"); no silent fallback to a global default.
+- **Relative path or no path** → use the *default workspace* — the one resolved from cwd at startup, when there is one. If `ae serve` was started outside any project, calls without an absolute path are rejected with a clear "path argument required" message.
+
+The model: a tool call carries enough information to identify its workspace, or it errors. There is no implicit project.
+
+This makes desktop hosts (Claude Desktop, Codex Desktop) work without per-project config: register `ae serve` once globally, pass absolute paths in tool calls, and the right workspace handles each one. Project-rooted hosts (Claude Code, Codex CLI, Cursor) still get the cwd-as-default behaviour they expect.
+
+Switching between MCP and CLI mid-session is fine — both write to the same SQLite per workspace and see the same head, branches, and annotations.
+
+To pin a single workspace as the default regardless of cwd, add `"args": ["serve", "--workspace-dir", "/abs/path/.agented"]` to the client config.

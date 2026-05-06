@@ -170,7 +170,7 @@ func (d *Daemon) spawnServer(ctx context.Context, lang, name string, srv config.
 	onLog := func(line string) {
 		fmt.Fprintf(d.LogWriter, "[%s/%s] %s\n", lang, name, line)
 	}
-	c, err := SpawnClient(ctx, srv.Command, srv.Args, d.WorkspaceRoot, onPub, onLog)
+	c, err := SpawnClient(ctx, srv.Command, srv.Args, d.WorkspaceRoot, srv.InitOptions, onPub, onLog)
 	if err != nil {
 		return err
 	}

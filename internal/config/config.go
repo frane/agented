@@ -81,6 +81,12 @@ type IDEServerCfg struct {
 	Name    string   `json:"name,omitempty"`
 	Command string   `json:"command"`
 	Args    []string `json:"args,omitempty"`
+
+	// InitOptions is sent to the LSP server in the `initializationOptions`
+	// field of the `initialize` request. Server-specific schema (gopls,
+	// rust-analyzer, pyright, etc. each accept different keys); ae does no
+	// validation. Empty/nil sends nothing.
+	InitOptions map[string]any `json:"init_options,omitempty"`
 }
 
 // ResolvedServers returns the canonical server list, synthesizing one

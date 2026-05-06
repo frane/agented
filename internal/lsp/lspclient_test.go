@@ -85,7 +85,7 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	c, err := lsp.SpawnClient(ctx, gopls, nil, dir,
+	c, err := lsp.SpawnClient(ctx, gopls, nil, dir, nil,
 		func(uri string, _ *int, ds []lsp.LSPDiagnostic) {
 			mu.Lock()
 			defer mu.Unlock()
