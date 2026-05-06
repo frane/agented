@@ -17,7 +17,7 @@ INSTALL_DIR ?= $(HOME)/.local/bin
 
 GO_ENV      := CGO_ENABLED=0
 
-.PHONY: build test test-short test-property bench lint release install clean fmt staticcheck stage-skill publish-skill
+.PHONY: build test test-short test-property bench lint release install clean fmt staticcheck stage-skill publish-skill stage-mcpb publish-smithery-skill publish-smithery-mcp publish-all
 
 build:
 	$(GO_ENV) go build -ldflags "$(LDFLAGS)" -o $(BINARY) $(PKG)
@@ -93,3 +93,34 @@ publish-skill: stage-skill
 	  exit 1 ; \
 	fi
 	clawhub skill publish $(PUBLISH_SKILL_DIR) --version $(PUBLISH_SKILL_VERSION)
+
+# Smithery publish targets.
+#
+# Skill: official `smithery skill publish` consumes the staged ClawHub
+# folder directly (zips it, uploads, registers under namespace/agented).
+# The folder already has SKILL.md + LICENSE + CHANGELOG + README.
+#
+# MCP: official `mcpb pack` (Anthropic) builds the .mcpb from a
+# manifest-only staging folder. Then `smithery mcp publish` uploads
+# the bundle to the MCP registry.
+#
+# Both require `smithery auth login` once. The MCP path also needs
+# Node (npx is used to invoke @anthropic-ai/mcpb without a global
+# install).
+SMITHERY_NAMESPACE  ?= frane
+SMITHERY_MCPB_SRC   := dist/smithery/mcpb-src
+SMITHERY_MCPB       := dist/smithery/agented.mcpb
+
+stage-mcpb:
+	@scripts/stage-mcpb.sh $(SMITHERY_MCPB_SRC)
+
+publish-smithery-skill: stage-skill
+	@command -v smithery >/dev/null 2>&1 || (echo "error: smithery CLI not on PATH. Install with: npm install -g @smithery/cli" >&2 ; exit 1)
+	smithery skill publish $(PUBLISH_SKILL_DIR) -n agented
+
+publish-smithery-mcp: stage-mcpb
+	@command -v smithery >/dev/null 2>&1 || (echo "error: smithery CLI not on PATH. Install with: npm install -g @smithery/cli" >&2 ; exit 1)
+	npx -y @anthropic-ai/mcpb pack $(SMITHERY_MCPB_SRC) $(SMITHERY_MCPB)
+	smithery mcp publish $(SMITHERY_MCPB) -n $(SMITHERY_NAMESPACE)/agented
+
+publish-all: publish-skill publish-smithery-skill publish-smithery-mcp
