@@ -1,7 +1,7 @@
 {
   "name": "agented",
-  "version": "0.4.2",
-  "contextFileName": "GEMINI.md",
+  "version": "0.4.3",
+  "contextFileName": "plugin/GEMINI.md",
   "mcpServers": {
     "agented": {
       "command": "ae",

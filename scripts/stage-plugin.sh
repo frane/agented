@@ -27,7 +27,7 @@ DEST_SKILL="$REPO_ROOT/plugin/skills/agented/SKILL.md"
 DEST_GEMINI="$REPO_ROOT/plugin/GEMINI.md"
 CLAUDE_JSON="$REPO_ROOT/plugin/.claude-plugin/plugin.json"
 CODEX_JSON="$REPO_ROOT/plugin/.codex-plugin/plugin.json"
-GEMINI_JSON="$REPO_ROOT/plugin/gemini-extension.json"
+GEMINI_JSON="$REPO_ROOT/gemini-extension.json"  # at repo root: required by Gemini gallery crawler
 
 if [ ! -f "$SRC" ]; then
   echo "error: $SRC not found" >&2
@@ -85,7 +85,7 @@ cat > "$GEMINI_JSON" <<JSON
 {
   "name": "agented",
   "version": "$VERSION",
-  "contextFileName": "GEMINI.md",
+  "contextFileName": "plugin/GEMINI.md",
   "mcpServers": {
     "agented": {
       "command": "ae",

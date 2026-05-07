@@ -1,7 +1,7 @@
 {
   "name": "agented",
   "description": "A text editor for LLMs, not humans.",
-  "version": "0.4.2",
+  "version": "0.4.3",
   "author": {
     "name": "Frane Bandov",
     "url": "https://github.com/frane"
