@@ -118,11 +118,14 @@ func LocateWith(start string, opts LocateOptions) (path string, isProject bool, 
 			return created, true, nil
 		}
 	}
-	// Tier 3: global fallback.
-	if gp == "" {
-		return "", false, errors.New("could not determine fallback global workspace path")
-	}
-	return gp, false, nil
+	// No tier-3 global fallback. Silently sharing ~/.agented/ across
+	// projects is a footgun: two unrelated projects end up writing to the
+	// same SQLite, with the same actor names, and "isolation" disappears.
+	// Force the user to be explicit instead.
+	return "", false, fmt.Errorf("no workspace found above %s — run `ae init` here to create one, "+
+		"pass --workspace-dir <path> explicitly, or set workspace.auto_create=true in config to "+
+		"auto-create at cwd. The global ~/.agented/ used to be a silent fallback in v0.4.0 and earlier; "+
+		"that fallback was removed in v0.4.1 because it caused cross-project state collisions", abs)
 }
 
 // DBPath returns the SQLite database path corresponding to the agentedDir

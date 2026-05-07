@@ -2,6 +2,14 @@
 
 All notable changes to agented are documented here. The format is based on [Keep a Changelog](https://keepachangelog.com), and the project follows [Semantic Versioning](https://semver.org).
 
+## [v0.4.1] - 2026-05-07
+
+### Breaking
+
+- **Removed tier-3 global-workspace fallback.** When ae could not find an existing `.agented/` above cwd and could not auto-create one (no project-root signal, or `auto_create=false`/`--no-auto-workspace`), it used to silently fall back to `~/.agented/`. That meant any number of unrelated projects ended up sharing a single SQLite database, with the same actor names and intermingled state — exactly the "no isolation" footgun. ae now errors with a message naming the three explicit options: run `ae init` here, pass `--workspace-dir <path>`, or set `workspace.auto_create=true` in config.
+
+  Migration: if you have edits in `~/.agented/` from prior versions, they remain readable via `ae --workspace-dir ~/.agented <verb>`. Most users will simply run `ae init` per project (or leave the project-root auto-create to handle it on first call). The few who relied on a true global scratch workspace can flip the new config knob.
+
 ## [v0.4.0] - 2026-05-06
 
 ### Features

@@ -31,18 +31,15 @@ func TestLocateWalkUp(t *testing.T) {
 	}
 }
 
-func TestLocateFallbackGlobal(t *testing.T) {
+func TestLocateErrorsWithNoWorkspace(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("HOME", dir)
-	got, isProj, err := workspace.Locate(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
+	_, _, err := workspace.Locate(t.TempDir())
+	if err == nil {
+		t.Fatal("expected error when no workspace exists; got nil (silent global fallback was removed in v0.4.1)")
 	}
-	if isProj {
-		t.Error("expected non-project")
-	}
-	if want := filepath.Join(dir, ".agented"); got != want {
-		t.Errorf("got %q want %q", got, want)
+	if !strings.Contains(err.Error(), "no workspace found") {
+		t.Errorf("expected error to mention `no workspace found`, got %q", err.Error())
 	}
 }
 
@@ -132,20 +129,17 @@ func TestLocateWithNoAutoWorkspaceFlag(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(root, ".git"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	got, isProj, err := workspace.LocateWith(root, workspace.LocateOptions{
+	_, _, err := workspace.LocateWith(root, workspace.LocateOptions{
 		AutoCreate:      "root-only",
 		NoAutoWorkspace: true,
 	})
-	if err != nil {
-		t.Fatal(err)
+	if err == nil {
+		t.Fatal("expected error: NoAutoWorkspace must skip tier-2 and tier-3 is gone")
 	}
-	if isProj {
-		t.Error("expected non-project (global fallback)")
+	if !strings.Contains(err.Error(), "no workspace found") {
+		t.Errorf("expected `no workspace found` in error, got %q", err.Error())
 	}
-	if got != filepath.Join(home, workspace.Dir) {
-		t.Errorf("got %q, expected global %q", got, filepath.Join(home, workspace.Dir))
-	}
-	if _, err := os.Stat(filepath.Join(root, workspace.Dir)); err == nil {
+	if _, statErr := os.Stat(filepath.Join(root, workspace.Dir)); statErr == nil {
 		t.Error("workspace should NOT be created when --no-auto-workspace is set")
 	}
 }
@@ -157,17 +151,14 @@ func TestLocateWithAutoCreateFalse(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(root, ".git"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	got, isProj, err := workspace.LocateWith(root, workspace.LocateOptions{
+	_, _, err := workspace.LocateWith(root, workspace.LocateOptions{
 		AutoCreate: "false",
 	})
-	if err != nil {
-		t.Fatal(err)
+	if err == nil {
+		t.Fatal("expected error: AutoCreate=false disables tier-2 and tier-3 is gone")
 	}
-	if isProj {
-		t.Error("expected non-project (global fallback)")
-	}
-	if got != filepath.Join(home, workspace.Dir) {
-		t.Errorf("got %q, expected global %q", got, filepath.Join(home, workspace.Dir))
+	if !strings.Contains(err.Error(), "no workspace found") {
+		t.Errorf("expected `no workspace found` in error, got %q", err.Error())
 	}
 }
 
@@ -199,21 +190,20 @@ func TestLocateWithAutoCreateTrueAtCwd(t *testing.T) {
 	}
 }
 
-func TestLocateWithNoProjectFallsToGlobal(t *testing.T) {
+func TestLocateWithNoProjectErrors(t *testing.T) {
+	// No .agented above, no project signal, AutoCreate=root-only.
+	// Tier-1 misses, tier-2 finds no signal, tier-3 was removed: must error.
 	root := t.TempDir()
 	home := t.TempDir()
 	t.Setenv("HOME", home)
-	got, isProj, err := workspace.LocateWith(root, workspace.LocateOptions{
+	_, _, err := workspace.LocateWith(root, workspace.LocateOptions{
 		AutoCreate: "root-only",
 	})
-	if err != nil {
-		t.Fatal(err)
+	if err == nil {
+		t.Fatal("expected error when no .agented exists and no project signal triggers tier-2")
 	}
-	if isProj {
-		t.Error("expected non-project (global fallback)")
-	}
-	if got != filepath.Join(home, workspace.Dir) {
-		t.Errorf("got %q, expected global %q", got, filepath.Join(home, workspace.Dir))
+	if !strings.Contains(err.Error(), "no workspace found") {
+		t.Errorf("expected `no workspace found` in error, got %q", err.Error())
 	}
 }
 
