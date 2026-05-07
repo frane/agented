@@ -246,3 +246,20 @@ s 1:1 the regex is \\n`
 		t.Errorf("got %q want %q", ops[0].With, want)
 	}
 }
+
+func TestRejectLeadingBackslashSpace(t *testing.T) {
+	cases := []string{
+		"@foo.go\ni 89 \\    StreamableHttpTransport,",
+		"@foo.go\ns 12:14 \\\tindented body",
+	}
+	for _, in := range cases {
+		_, err := applyformat.Parse([]byte(in), "")
+		if err == nil {
+			t.Errorf("expected error for %q; got nil", in)
+			continue
+		}
+		if !strings.Contains(err.Error(), "looks like an attempt to escape") {
+			t.Errorf("expected escape-foot-gun message, got %q", err.Error())
+		}
+	}
+}

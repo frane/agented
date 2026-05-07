@@ -1,6 +1,6 @@
 ---
 name: agented
-version: 1.2.8
+version: 1.2.9
 binary: ae
 description: A text editor for LLMs, not humans.
 ---
@@ -70,7 +70,7 @@ These are the operations that motivate reaching for `ae` over the built-ins.
 - **Atomic batches.** `ae apply` consumes JSON-lines on stdin and applies every operation inside one transaction. Replaces N Edit calls with one. Verb: `cat ops.jsonl | ae apply <path>`.
 - **Atomic move.** `ae move` cuts a range and inserts it elsewhere — same file or cross-file — in one transaction. No partial-success risk. Verb: `ae move <path> --from S:E --to N` (same-file) or `--to-file <other> --to-line N` (cross-file).
 - **Atomic extract.** `ae extract` cuts a range out of one file and writes it to another, creating the destination if absent and optionally saving both files in one call. The canonical refactor primitive. Verb: `ae extract <path> -r S:E --to <new-or-existing> [--to-line N] [--save]`.
-- **Regex replace with capture groups.** `ae replace --pattern` does sed-style replacement in a single tool call. Verb: `ae s <path> -p '<re>' -w '<expansion>' [-L <max>] [-n]`.
+- **Regex replace with capture groups.** `ae replace --pattern` does sed-style replacement in a single tool call. Verb: `ae s <path> -p '<re>' -w '<expansion>' [-L <max>] [-n]`. **Always single-quote `-w`** when using `$1`/`$2` backrefs — bash expands `$1` as the first positional arg (empty in most shells), so `-w "$1.foo"` silently inserts an empty string. Single quotes (`-w '$1.foo'`) pass `$1` through to ae, which expands per Go regexp.ExpandString semantics.
 - **Range-based addressing.** Every write targets a line range or insertion point, not a string. Edit's "string appears multiple times" failure mode doesn't exist here. Verb: any of `ae s/i/d` with `-r S:E`.
 - **Annotations as cross-session memory.** Per-file notes that persist across processes and across agents. Verb: `ae an <path> a -t "..."` to write; reading is automatic on `ae open`.
 - **Transactions with auto-rollback.** `ae begin` opens a logical group; `ae commit` finalizes; `ae rollback` reverts. Forgotten transactions auto-rollback after the configured idle window. Verb: `ae begin / ae commit / ae rollback`.

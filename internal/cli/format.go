@@ -16,6 +16,9 @@ func (a *App) emit(r *cmd.Result) error {
 	if r.Warning != "" {
 		fmt.Fprintln(a.Stderr, "warning:", r.Warning)
 	}
+	if r.Edit != nil && r.Edit.LoadedFromDisk {
+		fmt.Fprintf(a.Stderr, "warning: drift reconciled — %s. The disk content has been folded in as a new edit (recoverable via `ae undo` / `ae head`) and your write applied on top.\n", r.Edit.DriftReason)
+	}
 	if a.OutputFormat == "json" {
 		if err := emitJSON(a.Stdout, r); err != nil {
 			return err

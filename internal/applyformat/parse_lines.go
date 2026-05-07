@@ -159,6 +159,9 @@ func parseShortPositional(op *Operation, rest, body string, lineNum int) error {
 		}
 		op.Range = rng
 		op.With = mergeContent(content, body)
+		if err := rejectLeadingBackslashSpace(op.With, "replace", lineNum); err != nil {
+			return err
+		}
 	case "insert":
 		// i <after-line> <text>
 		atStr, content := splitFirstToken(rest)
@@ -168,6 +171,9 @@ func parseShortPositional(op *Operation, rest, body string, lineNum int) error {
 		}
 		op.After = n
 		op.Text = mergeContent(content, body)
+		if err := rejectLeadingBackslashSpace(op.Text, "insert", lineNum); err != nil {
+			return err
+		}
 	case "delete":
 		op.Range = strings.TrimSpace(rest)
 		if op.Range == "" {
@@ -357,4 +363,34 @@ func nextKVStart(s string) int {
 		i = j
 	}
 	return -1
+}
+
+// rejectLeadingBackslashSpace catches the common foot-gun where a user types
+// `i N \    foo` thinking `\` escapes leading whitespace. Shortform has no
+// such escape — leading whitespace is preserved verbatim after the first
+// space-separator that splits the line-number from the content. Without this
+// check, the literal `\` would land in the file, silently malforming it.
+//
+// The check fires only when content starts with `\` followed immediately by
+// a space or tab (the foot-gun shape). Other leading-`\` content (e.g.
+// `\foo`) is accepted as-is, since that may be intentional.
+func rejectLeadingBackslashSpace(content, verb string, lineNum int) error {
+	if len(content) >= 2 && content[0] == '\\' && (content[1] == ' ' || content[1] == '\t') {
+		return fmt.Errorf("apply: line %d: %s content starts with `\\` followed by whitespace, "+
+			"which looks like an attempt to escape leading whitespace. Shortform has no such "+
+			"escape; leading whitespace is preserved verbatim. Either drop the `\\` "+
+			"or use the heredoc form: `%s N <<<` followed by content lines and a closing `<<<`",
+			lineNum, verb, shortVerb(verb))
+	}
+	return nil
+}
+
+func shortVerb(verb string) string {
+	switch verb {
+	case "insert":
+		return "i"
+	case "replace":
+		return "s"
+	}
+	return verb
 }

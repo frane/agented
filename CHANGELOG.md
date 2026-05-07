@@ -2,6 +2,17 @@
 
 All notable changes to agented are documented here. The format is based on [Keep a Changelog](https://keepachangelog.com), and the project follows [Semantic Versioning](https://semver.org).
 
+## [v0.4.2] - 2026-05-07
+
+### Fixes
+
+- **`ae apply` shortform now rejects `\<whitespace>` as content prefix** instead of silently embedding the literal `\` in the file. Users hit this thinking `\` was an escape for leading whitespace; it never was. The new error names two valid alternatives: drop the `\` (shortform preserves leading whitespace verbatim after the line-number separator) or use the heredoc form `i N <<<` for content that begins with `\` legitimately.
+- **Auto-load drift is no longer silent**. When ae detects that the on-disk content has diverged from workspace head (an external editor wrote in between ae calls) and folds the disk content in as a new edit before applying the user's write on top, the CLI now prints a `warning: drift reconciled` line to stderr explaining what happened and noting that the disk version is recoverable via `ae undo` / `ae head`. Previously the reconciliation only surfaced via the `loaded_from_disk: true` JSON field, which was easy to miss in tab-mode output.
+
+### Documentation
+
+- **SKILL.md note on shell-quoting `-w` for capture groups**. `-w "$1.foo"` in bash silently expands `$1` as the first positional arg (empty in most contexts), inserting an empty string instead of the captured submatch. Single-quote (`-w '$1.foo'`) to pass `$1` through verbatim to ae's Go-regexp expander. The previous "regex replace with capture groups" entry didn't flag this; now it does.
+
 ## [v0.4.1] - 2026-05-07
 
 ### Breaking
