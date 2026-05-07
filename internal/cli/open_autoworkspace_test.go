@@ -99,11 +99,11 @@ func TestSecondInvocationFindsExistingWorkspace(t *testing.T) {
 	}
 }
 
-// --no-auto-workspace must skip tier-2 and fall back to the global workspace
-// without creating .agented/ at the git root.
-func TestNoAutoWorkspaceFlagFallsToGlobal(t *testing.T) {
+// --no-auto-workspace must skip tier-2; with tier-3 removed in v0.4.1, this
+// must error rather than silently fall through to ~/.agented/.
+func TestNoAutoWorkspaceFlagErrors(t *testing.T) {
 	root := t.TempDir()
-	home := t.TempDir() // separate from the project root so global != root
+	home := t.TempDir() // separate from the project root
 	os.MkdirAll(filepath.Join(root, ".git"), 0o755)
 	p := filepath.Join(root, "a.txt")
 	os.WriteFile(p, []byte("x\n"), 0o644)
@@ -119,16 +119,16 @@ func TestNoAutoWorkspaceFlagFallsToGlobal(t *testing.T) {
 		[]string{"--no-auto-workspace", "open", "a.txt"},
 		cmd.VersionInput{Version: "test", Commit: "abc", Date: "2026"},
 		strings.NewReader(""), &stdout, &stderr)
-	if code != 0 {
-		t.Fatalf("open: %d\nstdout=%s\nstderr=%s", code, stdout.String(), stderr.String())
+	if code == 0 {
+		t.Fatalf("expected non-zero exit; got 0\nstdout=%s\nstderr=%s", stdout.String(), stderr.String())
 	}
-	if strings.Contains(stderr.String(), "auto-created") {
-		t.Errorf("--no-auto-workspace should suppress auto-create: %s", stderr.String())
+	if !strings.Contains(stderr.String(), "no workspace found") {
+		t.Errorf("expected `no workspace found` in stderr, got %q", stderr.String())
 	}
 	if _, err := os.Stat(filepath.Join(root, ".agented")); err == nil {
 		t.Error(".agented should NOT have been created at git root")
 	}
-	if _, err := os.Stat(filepath.Join(home, ".agented")); err != nil {
-		t.Errorf("global ~/.agented should have been created in fallback: %v", err)
+	if _, err := os.Stat(filepath.Join(home, ".agented")); err == nil {
+		t.Error("global ~/.agented should NOT have been created (tier-3 removed in v0.4.1)")
 	}
 }
