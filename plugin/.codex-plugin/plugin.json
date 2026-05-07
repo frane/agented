@@ -1,0 +1,22 @@
+{
+  "name": "agented",
+  "version": "0.4.2",
+  "description": "A text editor for LLMs, not humans.",
+  "author": {
+    "name": "Frane Bandov",
+    "email": "frane.bandov@gmail.com"
+  },
+  "homepage": "https://github.com/frane/agented",
+  "repository": "https://github.com/frane/agented",
+  "license": "Apache-2.0",
+  "keywords": ["editor", "stateful", "undo-tree", "lsp", "mcp"],
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "agented",
+    "shortDescription": "A text editor for LLMs, not humans.",
+    "longDescription": "Branching undo tree, atomic multi-file edits, cross-session memory. Requires the `ae` binary on PATH.",
+    "category": "Editor",
+    "websiteURL": "https://github.com/frane/agented"
+  }
+}

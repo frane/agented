@@ -1,0 +1,11 @@
+{
+  "name": "agented",
+  "version": "0.4.2",
+  "contextFileName": "GEMINI.md",
+  "mcpServers": {
+    "agented": {
+      "command": "ae",
+      "args": ["serve"]
+    }
+  }
+}

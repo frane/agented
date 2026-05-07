@@ -1,0 +1,13 @@
+{
+  "name": "agented",
+  "description": "A text editor for LLMs, not humans.",
+  "version": "0.4.2",
+  "author": {
+    "name": "Frane Bandov",
+    "url": "https://github.com/frane"
+  },
+  "homepage": "https://github.com/frane/agented",
+  "repository": "https://github.com/frane/agented",
+  "license": "Apache-2.0",
+  "keywords": ["editor", "stateful", "undo-tree", "lsp", "mcp"]
+}

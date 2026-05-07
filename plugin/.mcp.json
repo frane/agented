@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "agented": {
+      "command": "ae",
+      "args": ["serve"]
+    }
+  }
+}

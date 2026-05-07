@@ -17,7 +17,7 @@ INSTALL_DIR ?= $(HOME)/.local/bin
 
 GO_ENV      := CGO_ENABLED=0
 
-.PHONY: build test test-short test-property bench lint release install clean fmt staticcheck stage-skill publish-skill stage-mcpb publish-smithery-skill publish-smithery-mcp publish-all
+.PHONY: build test test-short test-property bench lint release install clean fmt staticcheck stage-skill publish-skill stage-mcpb publish-smithery-skill publish-smithery-mcp stage-plugin verify-plugin-skill publish-all
 
 build:
 	$(GO_ENV) go build -ldflags "$(LDFLAGS)" -o $(BINARY) $(PKG)
@@ -127,4 +127,27 @@ publish-smithery-mcp: stage-mcpb
 	cd $(SMITHERY_MCPB_SRC) && zip -qr $(abspath $(SMITHERY_MCPB)) .
 	smithery mcp publish $(SMITHERY_MCPB) -n $(SMITHERY_NAMESPACE)/agented
 
-publish-all: publish-skill publish-smithery-skill publish-smithery-mcp
+publish-all: stage-plugin verify-plugin-skill publish-skill publish-smithery-skill publish-smithery-mcp
+	@echo
+	@echo "All catalog publishes complete."
+	@echo "GitHub release / Homebrew cask / Claude+Codex+Gemini plugins update automatically when you push the new tag."
+
+# Claude Code plugin sync.
+#
+# `make stage-plugin`         copies internal/skill/SKILL.md (the Go-embedded
+#                             canonical) to plugin/skills/agented/SKILL.md and
+#                             rewrites plugin/.claude-plugin/plugin.json with
+#                             the current git tag. Both files are checked in
+#                             so the plugin is installable from a fresh clone
+#                             via `/plugin marketplace add frane/agented`.
+#
+# `make verify-plugin-skill`  fails when the staged copy drifts from the
+#                             canonical. Wired into the Go test suite via
+#                             internal/skill/plugin_sync_test.go, so plain
+#                             `go test ./...` catches drift in CI.
+stage-plugin:
+	@scripts/stage-plugin.sh
+
+verify-plugin-skill:
+	@diff -q internal/skill/SKILL.md plugin/skills/agented/SKILL.md \
+	  || (echo "plugin/skills/agented/SKILL.md is stale; run make stage-plugin and commit" >&2; exit 1)

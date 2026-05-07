@@ -1,0 +1,17 @@
+{
+  "name": "frane-agented",
+  "owner": {
+    "name": "Frane Bandov",
+    "email": "frane.bandov@gmail.com"
+  },
+  "description": "agented (ae) — a text editor for LLMs, not humans.",
+  "plugins": [
+    {
+      "name": "agented",
+      "source": "./plugin",
+      "description": "A text editor for LLMs, not humans. Branching undo tree, atomic multi-file edits, cross-session memory. Requires the `ae` binary on PATH (install via `brew tap frane/tap && brew install agented` or the curl one-liner from the README).",
+      "category": "editor",
+      "tags": ["editor", "stateful", "undo-tree", "lsp", "mcp"]
+    }
+  ]
+}

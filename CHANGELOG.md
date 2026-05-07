@@ -2,6 +2,25 @@
 
 All notable changes to agented are documented here. The format is based on [Keep a Changelog](https://keepachangelog.com), and the project follows [Semantic Versioning](https://semver.org).
 
+## [v0.4.3] - 2026-05-07
+
+### Features
+
+- **Claude Code plugin distribution**. agented is now publishable as a Claude Code plugin via a marketplace at the repo root (`.claude-plugin/marketplace.json`). After tagging, users install with:
+
+  ```sh
+  /plugin marketplace add frane/agented
+  /plugin install agented@frane-agented
+  ```
+
+  The plugin layout under `plugin/` ships the embedded `SKILL.md` plus `.mcp.json` (registers `ae serve`). The `ae` binary still has to be on PATH (Homebrew or curl); plugins don't ship cross-platform binaries.
+
+- **Codex CLI plugin manifest**. Same plugin directory carries `plugin/.codex-plugin/plugin.json` for OpenAI Codex CLI. Codex's marketplace mechanism is still per-user (`~/.agents/plugins/marketplace.json`); users add the plugin manually via that file until the official Codex directory opens up.
+
+- **Gemini CLI extension manifest**. Same directory carries `plugin/gemini-extension.json` plus `plugin/GEMINI.md` (Gemini insists on the `.md` being named `GEMINI.md` rather than `SKILL.md`). Distributable via `gemini extensions install <github-url>`.
+
+- **`make stage-plugin` + drift guard**. `internal/skill/SKILL.md` stays the canonical copy; `make stage-plugin` mirrors it into the three plugin paths (`plugin/skills/agented/SKILL.md`, `plugin/GEMINI.md`) and rewrites the three manifests with the current git tag. `internal/skill/plugin_sync_test.go` runs in `go test ./...` and fails CI if any of the three skill copies drifts from the canonical, so a release can't ship a stale plugin.
+
 ## [v0.4.2] - 2026-05-07
 
 ### Fixes
