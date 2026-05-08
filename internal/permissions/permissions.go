@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sort"
+	"strings"
 )
 
 // DefaultRules are the allow-patterns ae installs into a target's config.
@@ -99,6 +100,8 @@ type Target struct {
 // clients here.
 var Targets = []Target{
 	claudeTarget,
+	codexTarget,
+	geminiTarget,
 	openclawTarget,
 }
 
@@ -291,6 +294,158 @@ var openclawTarget = Target{
 		return nil, nil
 	},
 }
+
+// codexTarget — Codex CLI's `.rules` file is for shell-command sandboxing,
+// not for tool-level deny. Per OpenAI's docs, there's no documented schema
+// to deny built-in tools like read_file/write_file. Codex's tool model is
+// also shell-based by default, so the equivalent of "force ae" via deny
+// rules doesn't apply the same way. Present here so `--target all` and
+// `--target codex` produce a clear skip rather than "unknown target". Both
+// surfaces (allow + deny) are no-ops; revisit if Codex publishes a schema.
+var codexTarget = Target{
+	Name: "codex",
+	GlobalPath: func() (string, error) {
+		return "", nil
+	},
+	ProjectPath: func(workspace string) string {
+		return ""
+	},
+	Detect: func() (bool, string) {
+		return false, "Codex .rules schema is for shell-command sandboxing only; no documented tool-level deny mechanism (track upstream)"
+	},
+	Apply: func(path string, rules []string) ([]string, error) {
+		return nil, nil
+	},
+	Remove: func(path string, rules []string) ([]string, error) {
+		return nil, nil
+	},
+}
+
+// geminiTarget — Gemini CLI uses a Policy Engine with TOML rules at
+// ~/.gemini/policies/*.toml. Each rule has toolName + decision ("deny" |
+// "allow" | "ask_user") + priority. Allow-rules aren't needed for ae from
+// Bash (Gemini's run_shell_command default policy lets it through), so
+// Apply/Remove are no-ops. The deny pair is what does the work — writes
+// (and removes) ~/.gemini/policies/agented-deny.toml with deny rules for
+// the file-mutation built-ins.
+var geminiTarget = Target{
+	Name: "gemini",
+	// Gemini's policy engine reads from ~/.gemini/policies/*.toml. There's
+	// no project-scope equivalent — policies are user-level. We surface the
+	// global policy file path here so resolvePath returns it under
+	// scope=global; project-scope is intentionally empty so callers see a
+	// clean "not supported in project scope" skip instead of a silent miss.
+	GlobalPath: func() (string, error) {
+		return geminiPolicyPath()
+	},
+	ProjectPath: func(workspace string) string {
+		return ""
+	},
+	Detect: func() (bool, string) {
+		home, _ := os.UserHomeDir()
+		if home != "" {
+			if fi, err := os.Stat(filepath.Join(home, ".gemini")); err == nil && fi.IsDir() {
+				return true, ""
+			}
+		}
+		return false, "no ~/.gemini directory; install with `gemini extensions install ...`"
+	},
+	Apply: func(path string, rules []string) ([]string, error) {
+		// Allow rules aren't needed for the agented Bash flow.
+		return nil, nil
+	},
+	Remove: func(path string, rules []string) ([]string, error) {
+		return nil, nil
+	},
+	DenyApply: func(_ string, rules []string) ([]string, error) {
+		policyPath, err := geminiPolicyPath()
+		if err != nil {
+			return nil, err
+		}
+		// Map ae-canonical names (Read/Edit/Write/NotebookEdit) to Gemini's
+		// built-in tool names. Anything not in the map is passed through as
+		// the user's own toolName, so callers can extend the list.
+		mapped := mapDenyRulesForGemini(rules)
+		body := buildGeminiDenyTOML(mapped)
+		// Idempotent: if the file already has this body, no-op.
+		if existing, _ := os.ReadFile(policyPath); string(existing) == body {
+			return nil, nil
+		}
+		if err := os.MkdirAll(filepath.Dir(policyPath), 0o755); err != nil {
+			return nil, err
+		}
+		if err := os.WriteFile(policyPath, []byte(body), 0o644); err != nil {
+			return nil, err
+		}
+		return mapped, nil
+	},
+	DenyRemove: func(_ string, rules []string) ([]string, error) {
+		policyPath, err := geminiPolicyPath()
+		if err != nil {
+			return nil, err
+		}
+		if _, err := os.Stat(policyPath); err != nil {
+			return nil, nil
+		}
+		// Single-file model: removing any rule means removing all of them.
+		// Mirrors Apply, which writes the full set in one shot.
+		mapped := mapDenyRulesForGemini(rules)
+		if err := os.Remove(policyPath); err != nil {
+			return nil, err
+		}
+		return mapped, nil
+	},
+}
+
+func geminiPolicyPath() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return "", fmt.Errorf("gemini: no home directory")
+	}
+	return filepath.Join(home, ".gemini", "policies", "agented-deny.toml"), nil
+}
+
+// mapDenyRulesForGemini translates the ae-canonical deny rule names
+// (Read/Edit/Write/NotebookEdit) to Gemini's built-in tool names. Any rule
+// not in the map is passed through as-is so users can deny custom tools.
+func mapDenyRulesForGemini(rules []string) []string {
+	canon := map[string]string{
+		"Read":         "read_file",
+		"Edit":         "edit",
+		"Write":        "write_file",
+		"NotebookEdit": "edit", // Gemini has no notebook-specific tool; collapse to edit
+	}
+	seen := make(map[string]bool, len(rules))
+	out := make([]string, 0, len(rules))
+	for _, r := range rules {
+		mapped := r
+		if v, ok := canon[r]; ok {
+			mapped = v
+		}
+		if seen[mapped] {
+			continue
+		}
+		seen[mapped] = true
+		out = append(out, mapped)
+	}
+	return out
+}
+
+func buildGeminiDenyTOML(tools []string) string {
+	var sb strings.Builder
+	sb.WriteString("# Written by `ae permissions disable-internals`. Forces Gemini\n")
+	sb.WriteString("# to use ae (via run_shell_command) for file edits instead of the\n")
+	sb.WriteString("# built-in file tools. Remove with `ae permissions enable-internals`.\n\n")
+	for _, t := range tools {
+		sb.WriteString("[[rule]]\n")
+		fmt.Fprintf(&sb, "toolName = %q\n", t)
+		sb.WriteString("decision = \"deny\"\n")
+		sb.WriteString("priority = 100\n")
+		sb.WriteString("denyMessage = \"agented skill is installed; use `ae` from run_shell_command instead\"\n\n")
+	}
+	return sb.String()
+}
+
 
 // readJSONObject reads a JSON object from path. Returns an empty map (no
 // error) if the file is absent. Errors only on IO/parse failure when the

@@ -3,6 +3,24 @@
 All notable changes to agented are documented here. The format is based on [Keep a Changelog](https://keepachangelog.com), and the project follows [Semantic Versioning](https://semver.org).
 
 
+## [v0.4.6] - 2026-05-08
+
+### Features
+
+- **`ae permissions disable-internals` now covers Gemini.** v0.4.5 shipped Claude only; this iteration adds Gemini support via its Policy Engine. Writes `~/.gemini/policies/agented-deny.toml` with `decision = "deny"` rules for `read_file`, `edit`, `write_file` (mapped from the canonical Read/Edit/Write/NotebookEdit names). Codex still skips: per OpenAI's docs, the `.rules` file covers shell-command sandboxing and there's no documented schema for denying built-in tools.
+
+  Per-target summary now exposed via the same `--target all` flow:
+
+  | Target | What `disable-internals` writes |
+  |---|---|
+  | claude | `permissions.deny` in `~/.claude/settings.json` |
+  | gemini | `~/.gemini/policies/agented-deny.toml` (Policy Engine TOML) |
+  | codex | skip (no upstream schema) |
+  | openclaw | skip (managed at agent level) |
+
+- **`docs/permissions.md`** updated with a per-target schema table and example invocations for each.
+
+
 ## [v0.4.5] - 2026-05-08
 
 ### Features
