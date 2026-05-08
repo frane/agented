@@ -6,6 +6,8 @@ Take ed, the line editor that nobody has voluntarily used since about 1975, and 
 
 ![ae demo](docs/demo.gif)
 
+![Claude Code using ae](docs/demo-claude.gif)
+
 
 ## What users say...
 
