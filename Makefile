@@ -111,7 +111,7 @@ SMITHERY_NAMESPACE  ?= frane
 SMITHERY_MCPB_SRC   := dist/smithery/mcpb-src
 SMITHERY_MCPB       := dist/smithery/agented.mcpb
 
-stage-mcpb:
+stage-mcpb: build
 	@scripts/stage-mcpb.sh $(SMITHERY_MCPB_SRC)
 
 publish-smithery-skill: stage-skill

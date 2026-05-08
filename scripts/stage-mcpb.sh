@@ -57,15 +57,30 @@ JSON
 # We initialise an MCP session over stdio, ask for tools/list, and slim
 # each entry to {name, description} per MCPB manifest spec.
 AE_BIN="${AE_BIN:-$REPO_ROOT/ae}"
-if [ -x "$AE_BIN" ]; then
-  TOOLS_JSON="$(
-    ( printf '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"stage-mcpb","version":"0"}}}\n'
-      printf '{"jsonrpc":"2.0","method":"notifications/initialized"}\n'
-      printf '{"jsonrpc":"2.0","id":2,"method":"tools/list"}\n'
-      sleep 1
-    ) | "$AE_BIN" serve 2>/dev/null | grep '"id":2'
-  )"
-  python3 - "$DEST/manifest.json" <<'PY' "$TOOLS_JSON"
+# Hard-fail when the binary is missing rather than shipping a manifest with
+# an empty tools list. The Make target depends on `build` so this branch
+# should never fire in practice; keeping it as a safety net for direct
+# script invocations (e.g. CI debugging).
+if [ ! -x "$AE_BIN" ]; then
+  echo "error: $AE_BIN not built. run \`make build\` first (or set AE_BIN=<path>)" >&2
+  exit 1
+fi
+# Fail-fast on the binary version vs the staged manifest version. If a stale
+# binary stays in the repo root past a tag bump, the published tool list will
+# look correct in count but be one release behind in shape. Surface that
+# explicitly instead of silently shipping it.
+BIN_VERSION="$("$AE_BIN" version 2>/dev/null | awk -F= '/^version=/{sub(/	.*/, "", $2); gsub(/^v/, "", $2); print $2; exit}')"
+if [ -n "$BIN_VERSION" ] && [ "$BIN_VERSION" != "$VERSION" ] && [ "$VERSION" != "0.0.0" ]; then
+  echo "warn: $AE_BIN reports version $BIN_VERSION but git describe says $VERSION; rebuild before publish" >&2
+fi
+TOOLS_JSON="$(
+  ( printf '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"stage-mcpb","version":"0"}}}\n'
+    printf '{"jsonrpc":"2.0","method":"notifications/initialized"}\n'
+    printf '{"jsonrpc":"2.0","id":2,"method":"tools/list"}\n'
+    sleep 1
+  ) | "$AE_BIN" serve 2>/dev/null | grep '"id":2'
+)"
+python3 - "$DEST/manifest.json" <<'PY' "$TOOLS_JSON"
 import json, sys
 manifest_path = sys.argv[1]
 raw = sys.argv[2]
@@ -87,9 +102,6 @@ m["tools"] = slim
 json.dump(m, open(manifest_path, "w"), indent=2)
 print(f"injected {len(slim)} tools into manifest")
 PY
-else
-  echo "warn: $AE_BIN not built; manifest will lack tools list. run `make build` first." >&2
-fi
 
 # Note: we deliberately do NOT run `mcpb validate` here. Anthropic's
 # validator rejects inputSchema/outputSchema as unknown keys on each
