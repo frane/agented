@@ -1,3 +1,4 @@
+
 // Package permissions installs / lists / uninstalls allow-rules for ae in
 // each supported client's permissions config (Claude Code today; Codex when
 // its config schema is documented). Mirrors the Target-driven design used
@@ -5,6 +6,7 @@
 package permissions
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -295,30 +297,158 @@ var openclawTarget = Target{
 	},
 }
 
-// codexTarget — Codex CLI's `.rules` file is for shell-command sandboxing,
-// not for tool-level deny. Per OpenAI's docs, there's no documented schema
-// to deny built-in tools like read_file/write_file. Codex's tool model is
-// also shell-based by default, so the equivalent of "force ae" via deny
-// rules doesn't apply the same way. Present here so `--target all` and
-// `--target codex` produce a clear skip rather than "unknown target". Both
-// surfaces (allow + deny) are no-ops; revisit if Codex publishes a schema.
+// codexTarget — Codex CLI exposes tool-level toggles via a `[tools]` table
+// in ~/.codex/config.toml (e.g. `tools.web_search = true`). The schema is
+// underdocumented for built-in file tools — Codex's primary edit primitive
+// is `apply_patch`, and `tools.apply_patch = false` is the inferred deny
+// path. The TOML key is accepted by `codex -c` parsing without error, but
+// the runtime behavior (whether it actually disables the tool) isn't
+// guaranteed by published docs. We write it anyway with a stderr warning,
+// so users can verify in their own session.
+//
+// Allow rules (Apply) are a no-op because Codex doesn't have a per-shell-
+// command allow list; sandbox_mode + approval_policy handle that, which
+// is out of scope for this command.
 var codexTarget = Target{
 	Name: "codex",
 	GlobalPath: func() (string, error) {
-		return "", nil
+		home, err := os.UserHomeDir()
+		if err != nil || home == "" {
+			return "", fmt.Errorf("codex: no home directory")
+		}
+		return filepath.Join(home, ".codex", "config.toml"), nil
 	},
 	ProjectPath: func(workspace string) string {
 		return ""
 	},
 	Detect: func() (bool, string) {
-		return false, "Codex .rules schema is for shell-command sandboxing only; no documented tool-level deny mechanism (track upstream)"
+		home, _ := os.UserHomeDir()
+		if home != "" {
+			if fi, err := os.Stat(filepath.Join(home, ".codex")); err == nil && fi.IsDir() {
+				return true, ""
+			}
+		}
+		if _, err := exec.LookPath("codex"); err == nil {
+			return true, ""
+		}
+		return false, "no install detected"
 	},
 	Apply: func(path string, rules []string) ([]string, error) {
+		// Codex's allow story is sandbox_mode + approval_policy, not
+		// per-tool allow rules. Skip silently here so `permissions install`
+		// remains a no-op for codex.
 		return nil, nil
 	},
 	Remove: func(path string, rules []string) ([]string, error) {
 		return nil, nil
 	},
+	DenyApply: func(path string, rules []string) ([]string, error) {
+		// Map canonical names -> Codex's apply_patch (the single edit
+		// primitive). Read/Edit/Write/NotebookEdit all collapse to it.
+		// Codex doesn't have separate read/write tools at the public
+		// surface — the agent reads via shell + writes via apply_patch,
+		// so denying apply_patch is the relevant lever.
+		_ = rules // accepted but unused; keys are fixed
+		return upsertCodexToolDenies(path, []string{"apply_patch"})
+	},
+	DenyRemove: func(path string, rules []string) ([]string, error) {
+		_ = rules
+		return removeCodexToolDenies(path, []string{"apply_patch"})
+	},
+}
+
+// upsertCodexToolDenies adds `<tool> = false` lines under a `[tools]` table
+// in path, creating the table if absent. Returns the names that were newly
+// added (skipping any already set to false). Idempotent.
+func upsertCodexToolDenies(path string, tools []string) ([]string, error) {
+	body, err := readOrEmpty(path)
+	if err != nil {
+		return nil, err
+	}
+	current := body
+	var added []string
+	for _, t := range tools {
+		newBody, didAdd := insertCodexToolFalse(current, t)
+		if didAdd {
+			added = append(added, t)
+			current = newBody
+		}
+	}
+	if len(added) == 0 {
+		return nil, nil
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return nil, err
+	}
+	return added, os.WriteFile(path, current, 0o644)
+}
+
+func removeCodexToolDenies(path string, tools []string) ([]string, error) {
+	body, err := readOrEmpty(path)
+	if err != nil || len(body) == 0 {
+		return nil, err
+	}
+	current := body
+	var removed []string
+	for _, t := range tools {
+		newBody, didRemove := stripCodexToolFalse(current, t)
+		if didRemove {
+			removed = append(removed, t)
+			current = newBody
+		}
+	}
+	if len(removed) == 0 {
+		return nil, nil
+	}
+	return removed, os.WriteFile(path, current, 0o644)
+}
+
+func insertCodexToolFalse(body []byte, tool string) ([]byte, bool) {
+	line := tool + " = false"
+	// Already present (anywhere in [tools] table)?
+	if bytes.Contains(body, []byte(line)) {
+		return body, false
+	}
+	if idx := bytes.Index(body, []byte("[tools]")); idx >= 0 {
+		// Append the line after the [tools] header line.
+		nl := bytes.IndexByte(body[idx:], '\n')
+		if nl < 0 {
+			return append(append([]byte{}, body...), []byte("\n"+line+"\n")...), true
+		}
+		ins := idx + nl + 1
+		out := make([]byte, 0, len(body)+len(line)+1)
+		out = append(out, body[:ins]...)
+		out = append(out, []byte(line+"\n")...)
+		out = append(out, body[ins:]...)
+		return out, true
+	}
+	// No [tools] table yet; append a new one at the end.
+	prefix := body
+	if len(prefix) > 0 && prefix[len(prefix)-1] != '\n' {
+		prefix = append(prefix, '\n')
+	}
+	if len(prefix) > 0 {
+		prefix = append(prefix, '\n')
+	}
+	prefix = append(prefix, []byte("[tools]\n"+line+"\n")...)
+	return prefix, true
+}
+
+func stripCodexToolFalse(body []byte, tool string) ([]byte, bool) {
+	line := []byte(tool + " = false")
+	idx := bytes.Index(body, line)
+	if idx < 0 {
+		return body, false
+	}
+	// Strip the line including its trailing newline (if any).
+	end := idx + len(line)
+	if end < len(body) && body[end] == '\n' {
+		end++
+	}
+	out := make([]byte, 0, len(body)-(end-idx))
+	out = append(out, body[:idx]...)
+	out = append(out, body[end:]...)
+	return out, true
 }
 
 // geminiTarget — Gemini CLI uses a Policy Engine with TOML rules at
@@ -839,4 +969,15 @@ func denyRemoveOne(t *Target, scope Scope, workspace string, rules []string, dry
 		return Result{Target: t.Name, Status: StatusUnchanged, Path: path}
 	}
 	return Result{Target: t.Name, Status: StatusRemoved, Path: path, Added: removed}
+}
+
+func readOrEmpty(path string) ([]byte, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return data, nil
 }

@@ -3,6 +3,26 @@
 All notable changes to agented are documented here. The format is based on [Keep a Changelog](https://keepachangelog.com), and the project follows [Semantic Versioning](https://semver.org).
 
 
+## [v0.4.7] - 2026-05-08
+
+### Features
+
+- **`ae permissions disable-internals` now writes a Codex deny rule too**, completing the Claude / Gemini / Codex matrix. Codex's only edit primitive at the public surface is `apply_patch`, so the implementation maps the canonical Read/Edit/Write/NotebookEdit input down to one TOML line — `apply_patch = false` under a `[tools]` table in `~/.codex/config.toml` — written idempotently with our own minimal section editor (no external TOML lib).
+
+  Honesty caveat: Codex accepts `tools.apply_patch = false` via `-c` parsing without error, but the published config docs don't explicitly state that this disables the tool at runtime. Treated as **experimental** — the docs flag it, the rule gets written, and users can verify the behavior in their own Codex session.
+
+  | Target | Mechanism | File |
+  |---|---|---|
+  | claude | `permissions.deny` array | `~/.claude/settings.json` (global) or `.claude/settings.local.json` (project) |
+  | codex | `tools.apply_patch = false` (experimental) | `~/.codex/config.toml` (global) |
+  | gemini | Policy Engine TOML rules | `~/.gemini/policies/agented-deny.toml` (global) |
+  | openclaw | n/a — managed at agent level | — |
+
+### Documentation
+
+- `docs/permissions.md` per-target table updated with Codex's row and the experimental caveat.
+
+
 ## [v0.4.6] - 2026-05-08
 
 ### Features

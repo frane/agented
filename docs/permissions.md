@@ -30,7 +30,7 @@ Per-target implementation, since each agent has a different schema:
 |---|---|---|
 | **claude** | `permissions.deny` array (sibling to `permissions.allow`) | `~/.claude/settings.json` (global) or `.claude/settings.local.json` (project) |
 | **gemini** | Policy Engine TOML rules | `~/.gemini/policies/agented-deny.toml` (global only — Gemini policies are user-level) |
-| **codex** | not supported today | skips with reason: Codex's `.rules` schema covers shell-command sandboxing, not tool-level deny |
+| **codex** | `tools.apply_patch = false` (experimental — schema accepts the key without error, runtime behavior not publicly verified) | `~/.codex/config.toml` (global only) |
 | **openclaw** | not applicable | permissions managed at the agent level by OpenClaw itself |
 
 The Gemini side maps the canonical names to Gemini's built-in tool names (`Read` → `read_file`, `Edit` → `edit`, `Write` → `write_file`); each rule gets `decision = "deny"` and a `denyMessage` pointing the agent at `ae`.
