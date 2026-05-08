@@ -45,13 +45,34 @@ curl -sSL https://raw.githubusercontent.com/frane/agented/master/install.sh | sh
 
 From source: `go install github.com/frane/agented/cmd/ae@latest`, or clone and `make install`. Pure Go, no cgo, single static binary, Apache 2.0.
 
+## Plugin distribution
+
+Once `ae` is on PATH, agented also ships as a plugin / extension across the major agent CLIs. The `ae` binary itself is the prereq for all three; the plugin layer just registers the skill content and the MCP server entry.
+
+**Claude Code**:
+
+```sh
+/plugin marketplace add frane/agented
+/plugin install agented@frane-agented
+```
+
+**Codex CLI**: until OpenAI's official directory opens, add a manual entry to `~/.agents/plugins/marketplace.json` pointing at this repo with `source.path: "./plugin"`.
+
+**Gemini CLI**:
+
+```sh
+gemini extensions install https://github.com/frane/agented
+```
+
+The Gemini gallery (https://geminicli.com/extensions/) crawls daily and indexes via the `gemini-cli-extension` topic on this repo.
+
 ## Getting started
 
 ```sh
 ae skill install
 ```
 
-That writes a `SKILL.md` into every detected agent's skills directory: Claude, Codex, Cursor, OpenClaw, the canonical `~/.agents/`. The skill teaches the agent how to drive ae.
+That writes a `SKILL.md` into every detected agent's skills directory: Claude, Codex, Cursor, Gemini, OpenClaw, and the canonical `~/.agents/`. The skill teaches the agent how to drive ae.
 
 You still need to tell the agent to use it. Even with the skill installed, agents fall back to built-in Read and Edit out of habit, so something like "use ae for all file edits" in your system prompt or your first message is what keeps them on it.
 
@@ -68,7 +89,7 @@ With linear undo this scenario is "rollback the entire batch or live with the ba
 
 ## Skill and MCP
 
-`ae skill install` writes the SKILL.md to every detected agent. `ae serve` exposes the same verbs over MCP for agents that don't have shell access. Each has its own page: [skill](docs/skill.md), [MCP](docs/mcp.md).
+`ae skill install` writes the SKILL.md into every detected agent. `ae serve` exposes the same verbs over MCP for agents that don't have shell access. Plugin-distribution channels (Claude Code marketplace, Codex CLI plugin, Gemini extension above) bundle both. Each surface has its own page: [skill](docs/skill.md), [MCP](docs/mcp.md).
 
 ## Performance
 
