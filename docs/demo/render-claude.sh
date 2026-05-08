@@ -1,13 +1,19 @@
 #!/usr/bin/env bash
 #
-# Render docs/demo-claude.gif by recording a real Claude Code session
-# (`claude -p`) with asciinema + agg. The PTY-based recording is more
-# faithful than VHS for streaming agent output: tool calls, retries, and
-# spinners all show up exactly as the user would see them.
+# Record an interactive Claude Code session using ae, save it as
+# docs/demo-claude.gif. asciinema captures a real PTY (the TUI, the
+# tool-call boxes, the streaming reasoning); agg converts to gif.
+#
+# Flow:
+#   1. This script preps a tempdir with a seed hello.go and `ae init`s it.
+#   2. Prints the prompt you should type at the claude prompt.
+#   3. Starts asciinema, which spawns an interactive `claude` session in
+#      the tempdir. You type the prompt, watch the agent work, then ctrl+D
+#      (or `/exit`) to end the session.
+#   4. After the recording, agg converts the cast to docs/demo-claude.gif.
 #
 # Auth: uses whatever auth `claude` is configured with (OAuth from
-# interactive `claude` login, or ANTHROPIC_API_KEY). Don't run from
-# inside another Claude Code session — auth state collides.
+# interactive `claude` login, or ANTHROPIC_API_KEY).
 #
 # Prereqs:
 #   - ae on PATH                  `brew tap frane/tap && brew install agented`
@@ -28,21 +34,18 @@ command -v claude >/dev/null    || { echo "error: claude (Claude Code CLI) not o
 command -v asciinema >/dev/null || { echo "error: asciinema not on PATH (brew install asciinema)" >&2; exit 1; }
 command -v agg >/dev/null       || { echo "error: agg not on PATH (brew install agg)" >&2; exit 1; }
 
-
 # Hard-fail if there's no controlling TTY. asciinema's headless mode
-# silently drops --cols/--rows and produces a stunted recording, which
-# is the most common "the demo gif looks broken" failure.
+# silently drops --cols/--rows and produces a stunted recording.
 if [ ! -t 0 ] || [ ! -t 1 ]; then
-  echo "error: render-claude.sh needs a real terminal (TTY) — asciinema falls back to headless without one." >&2
-  echo "       Run from a plain terminal, not inside Claude Code's Bash tool, an IDE task runner, or piped output." >&2
+  echo "error: render-claude.sh needs a real terminal (TTY)." >&2
+  echo "       Run from Terminal.app / iTerm / etc., not from inside another agent's Bash tool." >&2
   exit 1
 fi
-AE_DEMO_DIR=$(mktemp -d)
-INNER_SCRIPT=$(mktemp)
-CAST=$(mktemp -t ae-demo-claude.XXXXXX.cast)
-trap 'rm -rf "$AE_DEMO_DIR" "$INNER_SCRIPT" "$CAST"' EXIT
 
-# Seed file the agent will refactor.
+AE_DEMO_DIR=$(mktemp -d)
+CAST=$(mktemp -t ae-demo-claude.XXXXXX.cast)
+trap 'rm -rf "$AE_DEMO_DIR" "$CAST"' EXIT
+
 cat > "$AE_DEMO_DIR/hello.go" <<'GO'
 package main
 
@@ -57,40 +60,42 @@ func main() {
 }
 GO
 
-# Off-camera workspace setup so the recording starts at a clean prompt.
 ( cd "$AE_DEMO_DIR" && ae init >/dev/null )
 
-# Inner shell script that asciinema records. cd + cat sets the stage,
-# claude -p does the agent work, then we cat + ae log to show what the
-# agent did. Expanded via interpolating heredoc so $AE_DEMO_DIR baked in.
-cat > "$INNER_SCRIPT" <<INNER_EOF
-#!/usr/bin/env bash
-cd "$AE_DEMO_DIR"
-printf '\$ cat hello.go\n'
-cat hello.go
-sleep 1.5
-printf '\n\$ claude -p "Refactor hello.go: ..."\n'
-claude -p --allow-dangerously-skip-permissions --allowed-tools "Bash" 'Refactor hello.go: add a \`name string\` parameter to hello() so it prints "hello, <name>". Update main() to call hello("agented"). Use ae for all reads and edits.'
-sleep 1
-printf '\n\$ cat hello.go\n'
-cat hello.go
-sleep 1.5
-printf '\n\$ ae log hello.go --limit 10\n'
-ae log hello.go --limit 10
-sleep 2
-INNER_EOF
-chmod +x "$INNER_SCRIPT"
+# Suggested prompt — the user types this into the claude session once
+# the recording starts. Tuned so the agent uses 4–6 ae calls.
+PROMPT='Use ae for all reads and edits. Refactor hello.go: add a `name string` parameter to hello() so it prints "hello, <name>". Update main() to call hello("agented"). Then ae log hello.go to show the audit trail.'
 
-# Record the inner script. Idle-time-limit caps any single pause at 2s
-# so the agent's "thinking" silences don't make the gif boring.
+cat <<INFO
+
+╭───────────────────────────────────────────────────────────────────────╮
+│  agented demo recorder                                                │
+├───────────────────────────────────────────────────────────────────────┤
+│  Workspace ready at: $AE_DEMO_DIR
+│                                                                       │
+│  When recording starts, an interactive claude session opens in that   │
+│  directory. Paste this prompt:                                        │
+│                                                                       │
+INFO
+printf '%s\n' "  $PROMPT" | fold -s -w 70 | sed 's/^/  │  /; s/$/  │/'
+cat <<'INFO'
+│                                                                       │
+│  Watch Claude work, then exit (`/exit` or ctrl+D) when the refactor   │
+│  is done. asciinema stops automatically and agg builds the gif.       │
+╰───────────────────────────────────────────────────────────────────────╯
+
+INFO
+read -r -p 'press Enter to start recording (ctrl+C to abort)... '
+
 asciinema rec \
-  --command "$INNER_SCRIPT" \
+  --command "cd '$AE_DEMO_DIR' && claude" \
   --idle-time-limit 2 \
   --cols 110 --rows 36 \
   --overwrite \
   "$CAST"
 
-# Convert to gif. monokai theme matches the README's dark-mode reading.
 agg --theme monokai --font-size 14 "$CAST" docs/demo-claude.gif
 
+echo
 echo "wrote docs/demo-claude.gif"
+echo "(workspace + cast cleaned up via trap)"
