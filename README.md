@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/demo-claude.gif" alt="Claude Code using ae" width="900">
+  <img src="docs/demo-claude.gif" alt="Claude Code using ae" width="700">
 </p>
 
 Take ed, the line editor that nobody has voluntarily used since about 1975, and rebuild it for an environment where the typing user is a language model. Short verbs, line addresses, no modes, no TUI. What an editor optimises for changes when the user is the model: round trips per task, tokens per command, an editing buffer with a long memory, and an undo tree that remembers the branches the agent abandoned, because that's often where the interesting work was.
