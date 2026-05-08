@@ -3,6 +3,22 @@
 All notable changes to agented are documented here. The format is based on [Keep a Changelog](https://keepachangelog.com), and the project follows [Semantic Versioning](https://semver.org).
 
 
+## [v0.4.5] - 2026-05-08
+
+### Features
+
+- **`ae permissions disable-internals`**. New subcommand that writes deny-rules for the built-in file tools (`Read`, `Edit`, `Write`, `NotebookEdit`) into the agent's permission config. Once these are in place, agents that have the agented skill installed are forced to drive `ae` from Bash instead of falling back to the built-ins out of training-data habit. Pair with `ae permissions install` (the existing allow-rules for `Bash(ae *)`).
+
+  Today writes only Claude Code's `permissions.deny` array in `~/.claude/settings.json` (global) or `.claude/settings.local.json` (project). Gemini and Codex are skipped with a clear "deny-list schema not yet known" reason — their config schemas don't have a documented public deny-list field; we'll fill it in once they do.
+
+  ```sh
+  ae permissions disable-internals             # write deny rules to project scope
+  ae permissions disable-internals -s global   # to global scope
+  ae permissions disable-internals --dry-run   # preview
+  ae permissions enable-internals              # remove the deny rules
+  ```
+
+
 ## [v0.4.4] - 2026-05-08
 
 ### Features

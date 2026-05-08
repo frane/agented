@@ -22,6 +22,8 @@ func newPermissionsCmd(a *App) *cobra.Command {
 		newPermInstallCmd(a),
 		newPermListCmd(a),
 		newPermUninstallCmd(a),
+		newPermDisableInternalsCmd(a),
+		newPermEnableInternalsCmd(a),
 	)
 	return c
 }
@@ -172,4 +174,85 @@ func finishPermsRun(a *App, results []permissions.Result) error {
 		return wrapErrCode(2, errors.New("one or more permission targets failed"))
 	}
 	return nil
+}
+
+func newPermDisableInternalsCmd(a *App) *cobra.Command {
+	var (
+		target string
+		scope  string
+		dryRun bool
+	)
+	c := &cobra.Command{
+		Use:   "disable-internals",
+		Short: "Add deny-rules for built-in tools (Read/Edit/Write/NotebookEdit) so agents fall through to the agented skill",
+		Long: `Writes a permissions.deny entry for each of Read, Edit, Write, and
+NotebookEdit into the supported targets' config files. With these in place,
+agents that have the agented skill installed are forced to drive ` + "`ae`" + ` from
+Bash instead of falling back to the built-in file tools out of habit.
+
+Today only Claude Code's schema (permissions.deny in ~/.claude/settings.json
+or .claude/settings.local.json) is supported; Gemini and Codex are skipped
+with a clear "schema not yet known" reason. Pair with ` + "`ae permissions install`" + `
+which writes the matching allow-rules for ` + "`Bash(ae *)`" + `.`,
+		RunE: func(_ *cobra.Command, _ []string) error {
+			if err := validatePermTarget(target); err != nil {
+				return wrapErrCode(1, err)
+			}
+			if err := validateScopeFlag(scope); err != nil {
+				return wrapErrCode(1, err)
+			}
+			ws, err := workspaceForScope(a, scope)
+			if err != nil {
+				return wrapErrCode(1, err)
+			}
+			results, err := permissions.InstallDenies(permissions.InstallOptions{
+				Selected:  target,
+				Scope:     parsePermScope(scope),
+				Workspace: ws,
+				DryRun:    dryRun,
+			})
+			if err != nil {
+				return wrapErrCode(1, err)
+			}
+			return finishPermsRun(a, results)
+		},
+	}
+	attachPermFlags(c, &target, &scope, &dryRun)
+	return c
+}
+
+func newPermEnableInternalsCmd(a *App) *cobra.Command {
+	var (
+		target string
+		scope  string
+		dryRun bool
+	)
+	c := &cobra.Command{
+		Use:   "enable-internals",
+		Short: "Remove the deny-rules added by `ae permissions disable-internals`",
+		RunE: func(_ *cobra.Command, _ []string) error {
+			if err := validatePermTarget(target); err != nil {
+				return wrapErrCode(1, err)
+			}
+			if err := validateScopeFlag(scope); err != nil {
+				return wrapErrCode(1, err)
+			}
+			ws, err := workspaceForScope(a, scope)
+			if err != nil {
+				return wrapErrCode(1, err)
+			}
+			results, err := permissions.UninstallDenies(permissions.UninstallOptions{
+				Selected:  target,
+				Scope:     parsePermScope(scope),
+				Workspace: ws,
+				DryRun:    dryRun,
+			})
+			if err != nil {
+				return wrapErrCode(1, err)
+			}
+			return finishPermsRun(a, results)
+		},
+	}
+	attachPermFlags(c, &target, &scope, &dryRun)
+	return c
 }

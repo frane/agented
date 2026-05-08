@@ -16,11 +16,29 @@ import (
 
 // DefaultRules are the allow-patterns ae installs into a target's config.
 // Covers `ae`, `./ae`, and absolute-path invocations.
+// DefaultRules are the allow-patterns ae installs into a target's config.
+// Covers `ae`, `./ae`, and absolute-path invocations.
 var DefaultRules = []string{
 	"Bash(ae *)",
 	"Bash(ae)",
 	"Bash(./ae *)",
 	"Bash(./ae)",
+}
+
+// DefaultDenyRules are the built-in tools `ae permissions disable-internals`
+// adds to permissions.deny. The point: when these are enabled, agents fall
+// back to Read/Edit/Write out of training-data habit even with the agented
+// skill installed, and the round-trip / token-economy story is lost.
+//
+// Only the file-mutation built-ins are in the default list. Read is in
+// because the user's pain is exactly that — the agent skips `ae open`,
+// goes to Read, and the file never registers in ae's workspace. Users
+// who want Read available can edit the deny list manually after install.
+var DefaultDenyRules = []string{
+	"Read",
+	"Edit",
+	"Write",
+	"NotebookEdit",
 }
 
 // Scope discriminates global vs project install paths.
@@ -67,6 +85,14 @@ type Target struct {
 	// Remove strips rules from the file at path; returns rules removed.
 	// Idempotent: a missing file or absent rule is a no-op (zero removed).
 	Remove func(path string, rules []string) (removed []string, err error)
+
+	// DenyApply / DenyRemove are the deny-list pair, used by `ae permissions
+	// disable-internals` to write Read/Edit/Write deny rules. Nil for clients
+	// whose config schema has no deny mechanism; the CLI surfaces a clear
+	// "not supported" skip message in that case rather than silently doing
+	// nothing.
+	DenyApply  func(path string, rules []string) (added []string, err error)
+	DenyRemove func(path string, rules []string) (removed []string, err error)
 }
 
 // Targets is the source-of-truth ordered list. Append (don't reorder) new
@@ -169,6 +195,72 @@ var claudeTarget = Target{
 			kept = append(kept, r)
 		}
 		perms["allow"] = anyArray(kept)
+		root["permissions"] = perms
+		if err := writeJSONObject(path, root); err != nil {
+			return nil, err
+		}
+		return removed, nil
+	},
+	// Claude reuses the same JSON shape for permissions.deny, just under a
+	// different key. Same merge-and-sort logic; the deny entries (`Read`,
+	// `Edit`, `Write`, etc.) live alongside the allow entries Claude already
+	// has from `ae permissions install`.
+	DenyApply: func(path string, rules []string) ([]string, error) {
+		root, err := readJSONObject(path)
+		if err != nil {
+			return nil, err
+		}
+		perms, _ := root["permissions"].(map[string]any)
+		if perms == nil {
+			perms = map[string]any{}
+		}
+		existing := stringArray(perms["deny"])
+		set := make(map[string]bool, len(existing))
+		for _, r := range existing {
+			set[r] = true
+		}
+		var added []string
+		for _, r := range rules {
+			if !set[r] {
+				existing = append(existing, r)
+				set[r] = true
+				added = append(added, r)
+			}
+		}
+		sort.Strings(existing)
+		perms["deny"] = anyArray(existing)
+		root["permissions"] = perms
+		if err := writeJSONObject(path, root); err != nil {
+			return nil, err
+		}
+		return added, nil
+	},
+	DenyRemove: func(path string, rules []string) ([]string, error) {
+		root, err := readJSONObject(path)
+		if err != nil {
+			if os.IsNotExist(err) {
+				return nil, nil
+			}
+			return nil, err
+		}
+		perms, _ := root["permissions"].(map[string]any)
+		if perms == nil {
+			return nil, nil
+		}
+		existing := stringArray(perms["deny"])
+		toRemove := make(map[string]bool, len(rules))
+		for _, r := range rules {
+			toRemove[r] = true
+		}
+		var kept, removed []string
+		for _, r := range existing {
+			if toRemove[r] {
+				removed = append(removed, r)
+				continue
+			}
+			kept = append(kept, r)
+		}
+		perms["deny"] = anyArray(kept)
 		root["permissions"] = perms
 		if err := writeJSONObject(path, root); err != nil {
 			return nil, err
@@ -474,6 +566,117 @@ func removeOne(t *Target, scope Scope, workspace string, rules []string, dryRun 
 		return Result{Target: t.Name, Status: StatusWouldWrite, Path: path}
 	}
 	removed, err := t.Remove(path, rules)
+	if err != nil {
+		return Result{Target: t.Name, Status: StatusError, Path: path, Reason: err.Error()}
+	}
+	if len(removed) == 0 {
+		return Result{Target: t.Name, Status: StatusUnchanged, Path: path}
+	}
+	return Result{Target: t.Name, Status: StatusRemoved, Path: path, Added: removed}
+}
+
+// InstallDenies adds the deny-list rules (DefaultDenyRules unless opts.Rules
+// overrides) to each target's permissions.deny array. Targets without a
+// DenyApply are skipped with a clear "not supported" reason — Gemini and
+// Codex don't have public deny-list schemas today; this leaves room for
+// them to fill in DenyApply when the schema is documented without changing
+// the call surface here.
+func InstallDenies(opts InstallOptions) ([]Result, error) {
+	if opts.Scope == ScopeProject && opts.Workspace == "" {
+		return nil, errors.New("no workspace found, run `ae init` first")
+	}
+	rules := opts.Rules
+	if len(rules) == 0 {
+		rules = DefaultDenyRules
+	}
+	results := make([]Result, 0, len(Targets))
+	if opts.Selected != "" && opts.Selected != "all" {
+		t := FindTarget(opts.Selected)
+		if t == nil {
+			return nil, fmt.Errorf("unknown target %q", opts.Selected)
+		}
+		results = append(results, denyApplyOne(t, opts.Scope, opts.Workspace, rules, opts.DryRun))
+		return results, nil
+	}
+	for i := range Targets {
+		t := &Targets[i]
+		if det, reason := t.Detect(); !det {
+			results = append(results, Result{Target: t.Name, Status: StatusSkipped, Reason: reason})
+			continue
+		}
+		results = append(results, denyApplyOne(t, opts.Scope, opts.Workspace, rules, opts.DryRun))
+	}
+	return results, nil
+}
+
+// UninstallDenies removes the deny-list rules from each target.
+func UninstallDenies(opts UninstallOptions) ([]Result, error) {
+	if opts.Scope == ScopeProject && opts.Workspace == "" {
+		return nil, errors.New("no workspace found, run `ae init` first")
+	}
+	rules := opts.Rules
+	if len(rules) == 0 {
+		rules = DefaultDenyRules
+	}
+	results := make([]Result, 0, len(Targets))
+	if opts.Selected != "" && opts.Selected != "all" {
+		t := FindTarget(opts.Selected)
+		if t == nil {
+			return nil, fmt.Errorf("unknown target %q", opts.Selected)
+		}
+		results = append(results, denyRemoveOne(t, opts.Scope, opts.Workspace, rules, opts.DryRun))
+		return results, nil
+	}
+	for i := range Targets {
+		results = append(results, denyRemoveOne(&Targets[i], opts.Scope, opts.Workspace, rules, opts.DryRun))
+	}
+	return results, nil
+}
+
+func denyApplyOne(t *Target, scope Scope, workspace string, rules []string, dryRun bool) Result {
+	if t.DenyApply == nil {
+		return Result{Target: t.Name, Status: StatusSkipped,
+			Reason: t.Name + ": deny-list schema not yet known; track in github.com/frane/agented for support"}
+	}
+	path, err := resolvePath(t, scope, workspace)
+	if err != nil {
+		return Result{Target: t.Name, Status: StatusError, Reason: err.Error()}
+	}
+	if path == "" {
+		return Result{Target: t.Name, Status: StatusSkipped, Reason: "not supported in chosen scope"}
+	}
+	if dryRun {
+		return Result{Target: t.Name, Status: StatusWouldWrite, Path: path, Added: rules}
+	}
+	added, err := t.DenyApply(path, rules)
+	if err != nil {
+		return Result{Target: t.Name, Status: StatusError, Path: path, Reason: err.Error()}
+	}
+	if len(added) == 0 {
+		return Result{Target: t.Name, Status: StatusUnchanged, Path: path}
+	}
+	return Result{Target: t.Name, Status: StatusInstalled, Path: path, Added: added}
+}
+
+func denyRemoveOne(t *Target, scope Scope, workspace string, rules []string, dryRun bool) Result {
+	if t.DenyRemove == nil {
+		return Result{Target: t.Name, Status: StatusSkipped,
+			Reason: t.Name + ": deny-list schema not yet known; track in github.com/frane/agented for support"}
+	}
+	path, err := resolvePath(t, scope, workspace)
+	if err != nil {
+		return Result{Target: t.Name, Status: StatusError, Reason: err.Error()}
+	}
+	if path == "" {
+		return Result{Target: t.Name, Status: StatusSkipped, Reason: "not supported in chosen scope"}
+	}
+	if _, err := os.Stat(path); err != nil {
+		return Result{Target: t.Name, Status: StatusNotFound, Path: path}
+	}
+	if dryRun {
+		return Result{Target: t.Name, Status: StatusWouldWrite, Path: path}
+	}
+	removed, err := t.DenyRemove(path, rules)
 	if err != nil {
 		return Result{Target: t.Name, Status: StatusError, Path: path, Reason: err.Error()}
 	}
