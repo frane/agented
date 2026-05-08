@@ -4,7 +4,7 @@
 
 <p align="center">
   <a href="https://github.com/frane/agented/releases"><img alt="release" src="https://img.shields.io/github/v/release/frane/agented?style=flat-square"></a>
-  <a href="https://github.com/frane/agented/blob/master/LICENSE"><img alt="license" src="https://img.shields.io/github/license/frane/agented?style=flat-square"></a>
+  <a href="https://github.com/frane/agented/blob/master/LICENSE"><img alt="license" src="https://img.shields.io/github/license/frane/agented?style=flat-square&v=2"></a>
   <a href="https://smithery.ai/server/frane/agented"><img alt="smithery" src="https://img.shields.io/badge/smithery-MCP-purple?style=flat-square"></a>
 </p>
 
