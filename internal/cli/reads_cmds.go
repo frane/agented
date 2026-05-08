@@ -66,15 +66,22 @@ func newViewCmd(a *App) *cobra.Command {
 		Short:   "Print file contents at head",
 		Args:    cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
-			start, end := 0, 0
+			in := cmd.ViewInput{Path: args[0], Raw: raw}
 			if rangeStr != "" {
-				s, e, err := parseRange(rangeStr)
+				ranges, err := parseRanges(rangeStr)
 				if err != nil {
 					return wrapErrCode(1, err)
 				}
-				start, end = s, e
+				// Single-range stays on the legacy Start/End path so output
+				// is byte-identical to v0.4.3 and earlier; multi-range fills
+				// in.Ranges.
+				if len(ranges) == 1 {
+					in.Start, in.End = ranges[0].Start, ranges[0].End
+				} else {
+					in.Ranges = ranges
+				}
 			}
-			res, err := a.engine.View(cmd.ViewInput{Path: args[0], Start: start, End: end, Raw: raw})
+			res, err := a.engine.View(in)
 			if err != nil {
 				a.auditErr("view", map[string]any{"path": args[0], "range": rangeStr, "raw": raw}, err.Error(), nil, nil)
 				return wrapErr(err)
@@ -84,7 +91,7 @@ func newViewCmd(a *App) *cobra.Command {
 			return a.emit(res)
 		},
 	}
-	c.Flags().StringVarP(&rangeStr, "range", "r", "", "Inclusive line range (e.g. 10:20)")
+	c.Flags().StringVarP(&rangeStr, "range", "r", "", "Inclusive line range or comma-separated list (e.g. 10:20 or 10:20,40:60). Single ranges keep the v0.4.3 byte-identical output; multi-range concatenates with `...` separators between non-contiguous windows.")
 	c.Flags().BoolVarP(&raw, "raw", "R", false, "Emit content verbatim (no line-number prefix or state_token trailer)")
 	return c
 }

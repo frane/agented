@@ -1,6 +1,6 @@
 ---
 name: agented
-version: 1.2.9
+version: 1.2.10
 binary: ae
 description: A text editor for LLMs, not humans.
 ---
@@ -81,7 +81,7 @@ These are the operations that motivate reaching for `ae` over the built-ins.
 **Bound output server-side, always.** Every read verb has `--limit`/`-L`, `--range`/`-r`, or `--pattern`/`-p` to cap the result set before it leaves the daemon. Do not pipe through `head`/`tail`/`grep` to truncate; the bytes are already on the wire by then. ae prints a stderr nudge when stdout is piped without a bound flag (silence: `AE_NO_NUDGE=1` env or `output.nudge_on_pipe: false` in config).
 | Verb     | Short | Args                          | Output (tab) suffix       | Use when                              |
 |----------|-------|-------------------------------|---------------------------|---------------------------------------|
-| `view`   | `v`   | `<path> [--range S:E] [--raw]` | `state_token\t<hex>`      | Inspect a file or range. `--range` is Python-slice: `1:10` first 10, `-10:` last 10, `5:-5` middle slice, `:20` first 20, `42:50` window. `--raw` emits verbatim bytes (no line-num prefix, no token) for piping to another tool |
+| `view`   | `v`   | `<path> [--range S:E] [--raw]` | `state_token\t<hex>`      | Inspect a file or range. `--range` is Python-slice: `1:10` first 10, `-10:` last 10, `5:-5` middle slice, `:20` first 20, `42:50` window. **Multi-range** in one call: comma-separated, e.g. `--range 100:120,140:160` — output concatenates each window with `...` between non-contiguous gaps and one trailing `state_token`. Two view trips collapse into one. `--raw` emits verbatim bytes (no line-num prefix, no token) for piping to another tool |
 | `search` | `/`   | `<path> --pattern <re>`       | `state_token\t<hex>`      | Find matches; output `line\tcol\ttext`|
 | `diff`   | `df`  | `<path> [--from N --to M]`    | unified diff + token      | Inspect what an edit changed          |
 | `log`    | -     | `<path> [--limit N]`          | tab-delimited audit rows  | See history of operations             |

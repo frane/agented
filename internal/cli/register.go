@@ -165,6 +165,33 @@ func parseRange(s string) (int, int, error) {
 	return a, b, nil
 }
 
+// parseRanges accepts a single range or a comma-separated list of ranges
+// (e.g. "100:120,140:160,200:-1") and returns the parsed list. Single-range
+// input is returned as a one-element slice; the caller decides whether to
+// take the legacy single-range path or the multi-range path based on len.
+//
+// This sits alongside parseRange (singular) so existing callers that only
+// support single-range input keep working unchanged.
+func parseRanges(s string) ([]cmd.LineRange, error) {
+	if s == "" {
+		return nil, nil
+	}
+	parts := strings.Split(s, ",")
+	out := make([]cmd.LineRange, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+		}
+		a, b, err := parseRange(p)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, cmd.LineRange{Start: a, End: b})
+	}
+	return out, nil
+}
+
 // fileIDOrNil is a small helper for nil-safe FileID extraction.
 func fileIDOrNil(r *cmd.Result) *int64 {
 	if r == nil {

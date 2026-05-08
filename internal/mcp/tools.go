@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 
 	mcpgo "github.com/mark3labs/mcp-go/mcp"
 	mserver "github.com/mark3labs/mcp-go/server"
@@ -79,16 +80,31 @@ func RegisterTools(s *mserver.MCPServer, pool *cmd.Pool, stderr io.Writer) {
 	// view
 	s.AddTool(
 		mcpgo.NewTool("ae_view",
-			mcpgo.WithDescription("Read file at head; returns numbered lines and state_token."),
+			mcpgo.WithDescription("Read file at head; returns numbered lines and state_token. Pass `ranges` for multi-range view (saves round trips)."),
 			pathArg,
-			mcpgo.WithNumber("start", mcpgo.Description("Range start (1-indexed)")),
-			mcpgo.WithNumber("end", mcpgo.Description("Range end (inclusive)")),
+			mcpgo.WithNumber("start", mcpgo.Description("Single-range start (1-indexed)")),
+			mcpgo.WithNumber("end", mcpgo.Description("Single-range end (inclusive)")),
+			mcpgo.WithString("ranges", mcpgo.Description("Comma-separated multi-range list (e.g. \"100:120,140:160\"). Overrides start/end when set; output concatenates each range with `...` between non-contiguous gaps.")),
 		),
 		poolHandler(func(args map[string]any) (string, cmd.ViewInput, error) {
 			path, _ := args["path"].(string)
 			start := numberArg(args, "start")
 			end := numberArg(args, "end")
-			return path, cmd.ViewInput{Path: path, Start: start, End: end}, nil
+			rangesStr, _ := args["ranges"].(string)
+			in := cmd.ViewInput{Path: path, Start: start, End: end}
+			if rangesStr != "" {
+				rs, err := parseRangeList(rangesStr)
+				if err != nil {
+					return "", cmd.ViewInput{}, err
+				}
+				in.Start, in.End = 0, 0
+				if len(rs) == 1 {
+					in.Start, in.End = rs[0].Start, rs[0].End
+				} else {
+					in.Ranges = rs
+				}
+			}
+			return path, in, nil
 		}, pool, stderr, (*cmd.Engine).View),
 	)
 
@@ -452,6 +468,134 @@ func RegisterTools(s *mserver.MCPServer, pool *cmd.Pool, stderr io.Writer) {
 		}, pool, stderr, (*cmd.Engine).Load),
 	)
 
+	// apply — atomic batch ops via stdin. Three input formats accepted
+	// (JSON-lines, shortform, longform); first line auto-detects.
+	s.AddTool(
+		mcpgo.NewTool("ae_apply",
+			mcpgo.WithDescription("Run a batch of edit ops in one transaction. ops accepts JSON-lines / shortform / longform; first line of ops auto-detects format."),
+			pathArg,
+			mcpgo.WithString("ops", mcpgo.Description("Batch input (the same content the CLI reads from stdin)"), mcpgo.Required()),
+			mcpgo.WithBoolean("multi_file", mcpgo.Description("Allow ops to target multiple files; path becomes the default")),
+			mcpgo.WithString("expect", mcpgo.Description("Expected starting state_token for safety")),
+			mcpgo.WithString("expect_workspace", mcpgo.Description("Expected workspace_state_token for cross-file safety (multi-file only)")),
+		),
+		poolHandler(func(args map[string]any) (string, cmd.ApplyInput, error) {
+			path, _ := args["path"].(string)
+			if path == "" {
+				return "", cmd.ApplyInput{}, errors.New("path required")
+			}
+			ops, _ := args["ops"].(string)
+			if ops == "" {
+				return "", cmd.ApplyInput{}, errors.New("ops required")
+			}
+			multi, _ := args["multi_file"].(bool)
+			expect, _ := args["expect"].(string)
+			expectWs, _ := args["expect_workspace"].(string)
+			return path, cmd.ApplyInput{
+				Path:            path,
+				Stdin:           strings.NewReader(ops),
+				Expect:          expect,
+				MultiFile:       multi,
+				ExpectWorkspace: expectWs,
+			}, nil
+		}, pool, stderr, (*cmd.Engine).Apply),
+	)
+
+	// move — atomic same-file or cross-file move.
+	s.AddTool(
+		mcpgo.NewTool("ae_move",
+			mcpgo.WithDescription("Atomically remove lines [from_start,from_end] and re-insert at to_line (same file when to_file is empty, otherwise cross-file)."),
+			pathArg,
+			mcpgo.WithNumber("from_start", mcpgo.Description("Source range start"), mcpgo.Required()),
+			mcpgo.WithNumber("from_end", mcpgo.Description("Source range end"), mcpgo.Required()),
+			mcpgo.WithNumber("to_line", mcpgo.Description("Insert after this line in destination (0 means append)")),
+			mcpgo.WithString("to_file", mcpgo.Description("Destination path; empty for same-file move")),
+			mcpgo.WithString("expect", mcpgo.Description("Expected state_token for safety")),
+			mcpgo.WithBoolean("auto_open", mcpgo.Description("Auto-open the source file")),
+		),
+		poolHandler(func(args map[string]any) (string, cmd.MoveInput, error) {
+			path, _ := args["path"].(string)
+			if path == "" {
+				return "", cmd.MoveInput{}, errors.New("path required")
+			}
+			toFile, _ := args["to_file"].(string)
+			expect, _ := args["expect"].(string)
+			autoOpen, _ := args["auto_open"].(bool)
+			return path, cmd.MoveInput{
+				Path:      path,
+				FromStart: numberArg(args, "from_start"),
+				FromEnd:   numberArg(args, "from_end"),
+				ToFile:    toFile,
+				ToLine:    numberArg(args, "to_line"),
+				Expect:    expect,
+				AutoOpen:  autoOpen,
+			}, nil
+		}, pool, stderr, (*cmd.Engine).Move),
+	)
+
+	// extract — cut a range out of one file, write it to another (auto-created
+	// if absent), optionally save both.
+	s.AddTool(
+		mcpgo.NewTool("ae_extract",
+			mcpgo.WithDescription("Cut lines [from_start,from_end] from path and write them to to_file (auto-created if absent). The canonical refactor primitive."),
+			pathArg,
+			mcpgo.WithNumber("from_start", mcpgo.Description("Source range start"), mcpgo.Required()),
+			mcpgo.WithNumber("from_end", mcpgo.Description("Source range end"), mcpgo.Required()),
+			mcpgo.WithString("to_file", mcpgo.Description("Destination path"), mcpgo.Required()),
+			mcpgo.WithNumber("to_line", mcpgo.Description("Insert after this line in destination (0 = append)")),
+			mcpgo.WithBoolean("save", mcpgo.Description("Save both files to disk after the move")),
+			mcpgo.WithString("expect", mcpgo.Description("Expected state_token for safety")),
+		),
+		poolHandler(func(args map[string]any) (string, cmd.ExtractInput, error) {
+			path, _ := args["path"].(string)
+			toFile, _ := args["to_file"].(string)
+			if path == "" || toFile == "" {
+				return "", cmd.ExtractInput{}, errors.New("path and to_file required")
+			}
+			save, _ := args["save"].(bool)
+			expect, _ := args["expect"].(string)
+			return path, cmd.ExtractInput{
+				Path:      path,
+				FromStart: numberArg(args, "from_start"),
+				FromEnd:   numberArg(args, "from_end"),
+				ToFile:    toFile,
+				ToLine:    numberArg(args, "to_line"),
+				Save:      save,
+				Expect:    expect,
+			}, nil
+		}, pool, stderr, (*cmd.Engine).Extract),
+	)
+
+	// merge — three-way merge between two leaf edits. prefer auto-resolves
+	// every conflict in favor of one side; abort cancels an in-progress
+	// merge. Fine-grained per-range resolve specs are CLI-only for now.
+	s.AddTool(
+		mcpgo.NewTool("ae_merge",
+			mcpgo.WithDescription("Three-way merge between two leaf edits. Use prefer=a|b to auto-resolve every conflict in favor of one side; abort=true cancels."),
+			pathArg,
+			mcpgo.WithNumber("leaf_a", mcpgo.Description("Source leaf A edit id")),
+			mcpgo.WithNumber("leaf_b", mcpgo.Description("Source leaf B edit id")),
+			mcpgo.WithString("prefer", mcpgo.Description("\"a\" or \"b\" to auto-resolve all conflicts; empty for structured response")),
+			mcpgo.WithBoolean("abort", mcpgo.Description("Cancel an in-progress merge")),
+		),
+		poolHandler(func(args map[string]any) (string, cmd.MergeInput, error) {
+			path, _ := args["path"].(string)
+			if path == "" {
+				return "", cmd.MergeInput{}, errors.New("path required")
+			}
+			prefer, _ := args["prefer"].(string)
+			abort, _ := args["abort"].(bool)
+			return path, cmd.MergeInput{
+				Path:   path,
+				LeafA:  int64(numberArg(args, "leaf_a")),
+				LeafB:  int64(numberArg(args, "leaf_b")),
+				Prefer: prefer,
+				Abort:  abort,
+			}, nil
+		}, pool, stderr, (*cmd.Engine).Merge),
+	)
+
+
 	// who — actor identity is constant across the pool.
 	s.AddTool(
 		mcpgo.NewTool("ae_who",
@@ -491,3 +635,67 @@ func numberArg(args map[string]any, key string) int {
 
 // guard against unused imports if some helpers go unused
 var _ = fmt.Sprintf
+
+// parseRangeList parses a comma-separated list of "S:E" ranges using the same
+// slice-style semantics as the CLI's --range flag (negative = from-end,
+// empty edge = clamp to file). Mirrors internal/cli/register.go's parseRanges
+// without depending on the cli package.
+func parseRangeList(s string) ([]cmd.LineRange, error) {
+	if s == "" {
+		return nil, nil
+	}
+	parts := strings.Split(s, ",")
+	out := make([]cmd.LineRange, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+		}
+		colon := strings.Index(p, ":")
+		if colon < 0 {
+			return nil, fmt.Errorf("invalid range %q (expected start:end)", p)
+		}
+		startStr := strings.TrimSpace(p[:colon])
+		endStr := strings.TrimSpace(p[colon+1:])
+		var startN, endN int
+		var err error
+		if startStr != "" {
+			startN, err = strconvAtoi(startStr)
+			if err != nil {
+				return nil, fmt.Errorf("invalid start in range %q: %w", p, err)
+			}
+		}
+		if endStr != "" {
+			endN, err = strconvAtoi(endStr)
+			if err != nil {
+				return nil, fmt.Errorf("invalid end in range %q: %w", p, err)
+			}
+		}
+		out = append(out, cmd.LineRange{Start: startN, End: endN})
+	}
+	return out, nil
+}
+
+func strconvAtoi(s string) (int, error) {
+	n := 0
+	neg := false
+	i := 0
+	if i < len(s) && s[i] == '-' {
+		neg = true
+		i++
+	}
+	if i == len(s) {
+		return 0, fmt.Errorf("invalid integer %q", s)
+	}
+	for ; i < len(s); i++ {
+		c := s[i]
+		if c < '0' || c > '9' {
+			return 0, fmt.Errorf("invalid integer %q", s)
+		}
+		n = n*10 + int(c-'0')
+	}
+	if neg {
+		n = -n
+	}
+	return n, nil
+}

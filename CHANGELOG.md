@@ -2,6 +2,32 @@
 
 All notable changes to agented are documented here. The format is based on [Keep a Changelog](https://keepachangelog.com), and the project follows [Semantic Versioning](https://semver.org).
 
+
+## [v0.4.4] - 2026-05-08
+
+### Features
+
+- **Multi-range view**. `ae view -r 100:120,140:160` returns both windows in one call instead of two trips. Output concatenates each window with a `...` separator on non-contiguous gaps and one trailing `state_token` line. Single-range syntax is byte-identical to v0.4.3 — no existing call shape changes. The MCP tool gains a `ranges` arg with the same comma-separated format.
+
+- **MCP parity for the four missing core verbs**. Previously the MCP server exposed 30 tools but skipped `apply`, `move`, `extract`, and `merge` — three of them ae's headline atomicity primitives, the fourth its three-way merge. They're now first-class:
+  - `ae_apply` (`path`, `ops`, `multi_file`, `expect`, `expect_workspace`) — atomic batch ops; `ops` accepts the same JSON-lines / shortform / longform input the CLI reads from stdin.
+  - `ae_move` (`path`, `from_start`, `from_end`, `to_line`, `to_file`, `expect`, `auto_open`) — same-file or cross-file atomic move.
+  - `ae_extract` (`path`, `from_start`, `from_end`, `to_file`, `to_line`, `save`, `expect`) — the canonical refactor primitive: cut a range out of one file, write it to another (auto-created if absent), optionally save both.
+  - `ae_merge` (`path`, `leaf_a`, `leaf_b`, `prefer`, `abort`) — three-way merge between two leaf edits; fine-grained per-range `--resolve` specs remain CLI-only for now.
+
+  Brings the MCP tool count to 34 and closes the parity gap CLI agents had over MCP agents.
+
+### Tests
+
+- `TestViewSingleRangeBackwardCompat` pins the v0.4.3 single-range output byte-for-byte.
+- `TestViewSingleRangeViaRanges` confirms passing one element via the new `Ranges` field produces identical output to the legacy `Start/End` path.
+- `TestViewMultiRangeNonContiguousEmitsSeparator`, `TestViewMultiRangeAdjacentNoSeparator`, `TestViewMultiRangeOverlapMerges`, `TestViewMultiRangeOutOfOrderSorts` cover the new behaviors.
+
+### Deferred to v0.4.5
+
+- Multi-range `delete` and `search` — same pattern, more code; kept out of v0.4.4 to ship the high-leverage view + MCP-parity bits cleanly.
+- LSP-backed MCP tools (`ae_diagnostics`, `ae_hover`, `ae_references`) — design discussed in the v0.4.0 notes; implementation pending.
+
 ## [v0.4.3] - 2026-05-07
 
 ### Features
