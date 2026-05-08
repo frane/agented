@@ -87,8 +87,13 @@ cat <<'INFO'
 INFO
 read -r -p 'press Enter to start recording (ctrl+C to abort)... '
 
+# `--allowed-tools "Bash"` forces Claude to use the agented skill
+# (which teaches `ae` from the shell) instead of the agented MCP
+# server or the built-in Read/Edit/Write. The whole point of the
+# demo is that the skill teaches the model to be efficient — MCP is
+# a separate distribution channel and not what we want to show here.
 asciinema rec \
-  --command "cd '$AE_DEMO_DIR' && claude" \
+  --command "cd '$AE_DEMO_DIR' && claude --allowed-tools Bash --disallowed-tools 'Read,Edit,Write,mcp__agented__*'" \
   --idle-time-limit 2 \
   --cols 110 --rows 36 \
   --overwrite \
