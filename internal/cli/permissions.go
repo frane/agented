@@ -185,15 +185,24 @@ func newPermDisableInternalsCmd(a *App) *cobra.Command {
 	c := &cobra.Command{
 		Use:   "disable-internals",
 		Short: "Add deny-rules for built-in tools (Read/Edit/Write/NotebookEdit) so agents fall through to the agented skill",
-		Long: `Writes a permissions.deny entry for each of Read, Edit, Write, and
-NotebookEdit into the supported targets' config files. With these in place,
-agents that have the agented skill installed are forced to drive ` + "`ae`" + ` from
-Bash instead of falling back to the built-in file tools out of habit.
+		Long: `Writes deny-rules for the built-in file tools (Read, Edit, Write,
+NotebookEdit) into each detected agent's config so they can't fall back to
+those tools after the agented skill is installed. The agent is forced to
+drive ` + "`ae`" + ` from the shell — which is what the skill teaches.
 
-Today only Claude Code's schema (permissions.deny in ~/.claude/settings.json
-or .claude/settings.local.json) is supported; Gemini and Codex are skipped
-with a clear "schema not yet known" reason. Pair with ` + "`ae permissions install`" + `
-which writes the matching allow-rules for ` + "`Bash(ae *)`" + `.`,
+Per-target implementation, since each agent has a different schema:
+
+  claude    permissions.deny array in ~/.claude/settings.json
+            (global) or .claude/settings.local.json (project)
+  codex     [tools] apply_patch = false in ~/.codex/config.toml
+            (experimental — schema accepts the key, runtime
+            verification on the user)
+  gemini    Policy Engine TOML at ~/.gemini/policies/agented-deny.toml
+            (global only — Gemini policies are user-level)
+  openclaw  not applicable — permissions managed at the agent level
+
+Pair with ` + "`ae permissions install`" + ` which writes the matching allow-rules
+for ` + "`Bash(ae *)`" + `. Use ` + "`ae permissions enable-internals`" + ` to undo.`,
 		RunE: func(_ *cobra.Command, _ []string) error {
 			if err := validatePermTarget(target); err != nil {
 				return wrapErrCode(1, err)

@@ -3,6 +3,13 @@
 All notable changes to agented are documented here. The format is based on [Keep a Changelog](https://keepachangelog.com), and the project follows [Semantic Versioning](https://semver.org).
 
 
+## [v0.4.8] - 2026-05-13
+
+### Fixes
+
+- **`ae permissions disable-internals --help` was stale.** The long description still claimed Claude was the only supported target, even though v0.4.6 added Gemini and v0.4.7 added Codex. The string was last touched in v0.4.5 and never updated when the other two targets landed. Now reflects the full per-target matrix.
+
+
 ## [v0.4.7] - 2026-05-08
 
 ### Features
