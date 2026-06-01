@@ -181,6 +181,7 @@ func newPermDisableInternalsCmd(a *App) *cobra.Command {
 		target string
 		scope  string
 		dryRun bool
+		strict bool
 	)
 	c := &cobra.Command{
 		Use:   "disable-internals",
@@ -201,8 +202,21 @@ Per-target implementation, since each agent has a different schema:
             (global only — Gemini policies are user-level)
   openclaw  not applicable — permissions managed at the agent level
 
+Nuclear: pass --strict to also deny the shell-command fallbacks (cat,
+sed, awk, head, tail, vi, vim, nano, less, more, ed, emacs, code).
+This stops the agent from routing around the built-in denies via Bash
+or run_shell_command. Discovery + version-control tools (grep, find,
+ls, git) stay allowed. Per-target output paths:
+
+  claude    additional Bash(<cmd> *) entries in permissions.deny
+  codex     new file ~/.codex/rules/agented-strict.rules with
+            prefix_rule(... forbidden) calls
+  gemini    new file ~/.gemini/policies/agented-strict.toml with
+            run_shell_command + argsPattern rules
+
 Pair with ` + "`ae permissions install`" + ` which writes the matching allow-rules
-for ` + "`Bash(ae *)`" + `. Use ` + "`ae permissions enable-internals`" + ` to undo.`,
+for ` + "`Bash(ae *)`" + `. Use ` + "`ae permissions enable-internals`" + ` to undo (also
+takes --strict to also remove the shell denies).`,
 		RunE: func(_ *cobra.Command, _ []string) error {
 			if err := validatePermTarget(target); err != nil {
 				return wrapErrCode(1, err)
@@ -219,6 +233,7 @@ for ` + "`Bash(ae *)`" + `. Use ` + "`ae permissions enable-internals`" + ` to u
 				Scope:     parsePermScope(scope),
 				Workspace: ws,
 				DryRun:    dryRun,
+				Strict:    strict,
 			})
 			if err != nil {
 				return wrapErrCode(1, err)
@@ -227,6 +242,7 @@ for ` + "`Bash(ae *)`" + `. Use ` + "`ae permissions enable-internals`" + ` to u
 		},
 	}
 	attachPermFlags(c, &target, &scope, &dryRun)
+	c.Flags().BoolVar(&strict, "strict", false, "Also deny shell-command fallbacks (cat, sed, awk, ...) — the nuclear option")
 	return c
 }
 
@@ -235,10 +251,16 @@ func newPermEnableInternalsCmd(a *App) *cobra.Command {
 		target string
 		scope  string
 		dryRun bool
+		strict bool
 	)
 	c := &cobra.Command{
 		Use:   "enable-internals",
 		Short: "Remove the deny-rules added by `ae permissions disable-internals`",
+		Long: `Removes the deny-rules written by disable-internals. Pass --strict
+to also remove the shell-command denies added by disable-internals --strict
+(the per-target strict files: ~/.codex/rules/agented-strict.rules,
+~/.gemini/policies/agented-strict.toml, and the Bash(<cmd> *) entries in
+Claude's permissions.deny).`,
 		RunE: func(_ *cobra.Command, _ []string) error {
 			if err := validatePermTarget(target); err != nil {
 				return wrapErrCode(1, err)
@@ -255,6 +277,7 @@ func newPermEnableInternalsCmd(a *App) *cobra.Command {
 				Scope:     parsePermScope(scope),
 				Workspace: ws,
 				DryRun:    dryRun,
+				Strict:    strict,
 			})
 			if err != nil {
 				return wrapErrCode(1, err)
@@ -263,5 +286,6 @@ func newPermEnableInternalsCmd(a *App) *cobra.Command {
 		},
 	}
 	attachPermFlags(c, &target, &scope, &dryRun)
+	c.Flags().BoolVar(&strict, "strict", false, "Also remove the shell-command denies added by disable-internals --strict")
 	return c
 }

@@ -44,6 +44,21 @@ var DefaultDenyRules = []string{
 	"NotebookEdit",
 }
 
+// DefaultStrictShellCmds is the shell-command deny list added by
+// `--strict`. These are the obvious editor/reader fallbacks an agent
+// reaches for when its built-in file tools are denied; without them in
+// the deny list, the agent just routes around `disable-internals` via
+// `Bash(cat *)` / `Bash(sed *)` / etc.
+//
+// Discovery + version-control commands stay allowed: grep, rg, find, ls,
+// git. So do build tools (make, go, cargo, npm). The list is the editing
+// and reading fallbacks only.
+var DefaultStrictShellCmds = []string{
+	"cat", "sed", "awk", "head", "tail",
+	"vi", "vim", "nano", "less", "more",
+	"ed", "emacs", "code",
+}
+
 // Scope discriminates global vs project install paths.
 type Scope int
 
@@ -96,6 +111,16 @@ type Target struct {
 	// nothing.
 	DenyApply  func(path string, rules []string) (added []string, err error)
 	DenyRemove func(path string, rules []string) (removed []string, err error)
+
+	// StrictApply / StrictRemove are the --strict-mode pair: forbid the
+	// shell-command fallbacks (cat, sed, awk, etc.) so the agent can't
+	// route around the built-in tool denies via Bash. Per-target shape:
+	// Claude → Bash(<cmd> *) entries in permissions.deny; Codex →
+	// prefix_rule(... forbidden) in ~/.codex/rules/default.rules;
+	// Gemini → policy rules with argsPattern matching the command name.
+	// Nil for clients with no shell-deny mechanism.
+	StrictApply  func(path string, cmds []string) (added []string, err error)
+	StrictRemove func(path string, cmds []string) (removed []string, err error)
 }
 
 // Targets is the source-of-truth ordered list. Append (don't reorder) new
@@ -272,6 +297,81 @@ var claudeTarget = Target{
 		}
 		return removed, nil
 	},
+	// StrictApply for Claude: add Bash(<cmd> *) deny patterns to
+	// permissions.deny. Same JSON shape as DenyApply, just a different rule
+	// list. Idempotent.
+	StrictApply: func(path string, cmds []string) ([]string, error) {
+		rules := shellPatternRulesForClaude(cmds)
+		root, err := readJSONObject(path)
+		if err != nil {
+			return nil, err
+		}
+		perms, _ := root["permissions"].(map[string]any)
+		if perms == nil {
+			perms = map[string]any{}
+		}
+		existing := stringArray(perms["deny"])
+		set := make(map[string]bool, len(existing))
+		for _, r := range existing {
+			set[r] = true
+		}
+		var added []string
+		for _, r := range rules {
+			if !set[r] {
+				existing = append(existing, r)
+				set[r] = true
+				added = append(added, r)
+			}
+		}
+		sort.Strings(existing)
+		perms["deny"] = anyArray(existing)
+		root["permissions"] = perms
+		if err := writeJSONObject(path, root); err != nil {
+			return nil, err
+		}
+		return added, nil
+	},
+	StrictRemove: func(path string, cmds []string) ([]string, error) {
+		rules := shellPatternRulesForClaude(cmds)
+		root, err := readJSONObject(path)
+		if err != nil {
+			if os.IsNotExist(err) {
+				return nil, nil
+			}
+			return nil, err
+		}
+		perms, _ := root["permissions"].(map[string]any)
+		if perms == nil {
+			return nil, nil
+		}
+		existing := stringArray(perms["deny"])
+		toRemove := make(map[string]bool, len(rules))
+		for _, r := range rules {
+			toRemove[r] = true
+		}
+		var kept, removed []string
+		for _, r := range existing {
+			if toRemove[r] {
+				removed = append(removed, r)
+				continue
+			}
+			kept = append(kept, r)
+		}
+		perms["deny"] = anyArray(kept)
+		root["permissions"] = perms
+		if err := writeJSONObject(path, root); err != nil {
+			return nil, err
+		}
+		return removed, nil
+	},
+}
+
+func shellPatternRulesForClaude(cmds []string) []string {
+	out := make([]string, 0, len(cmds))
+	for _, c := range cmds {
+		out = append(out, "Bash("+c+" *)")
+	}
+	return out
 }
 
 // openclawTarget — OpenClaw manages permissions at the agent level rather
@@ -355,6 +455,68 @@ var codexTarget = Target{
 		_ = rules
 		return removeCodexToolDenies(path, []string{"apply_patch"})
 	},
+	// StrictApply for Codex: write ~/.codex/rules/default.rules with
+	// prefix_rule(... forbidden) entries for each shell command. This is
+	// Codex's documented shell-command sandbox mechanism. The rules file
+	// is independent of config.toml; the path argument here is ignored
+	// (the .rules path is resolved relative to ~/.codex).
+	StrictApply: func(_ string, cmds []string) ([]string, error) {
+		rulesPath, err := codexRulesPath()
+		if err != nil {
+			return nil, err
+		}
+		body := buildCodexRulesFile(cmds)
+		if existing, _ := os.ReadFile(rulesPath); string(existing) == body {
+			return nil, nil
+		}
+		if err := os.MkdirAll(filepath.Dir(rulesPath), 0o755); err != nil {
+			return nil, err
+		}
+		if err := os.WriteFile(rulesPath, []byte(body), 0o644); err != nil {
+			return nil, err
+		}
+		return cmds, nil
+	},
+	StrictRemove: func(_ string, cmds []string) ([]string, error) {
+		rulesPath, err := codexRulesPath()
+		if err != nil {
+			return nil, err
+		}
+		if _, err := os.Stat(rulesPath); err != nil {
+			return nil, nil
+		}
+		if err := os.Remove(rulesPath); err != nil {
+			return nil, err
+		}
+		return cmds, nil
+	},
+}
+
+func codexRulesPath() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return "", fmt.Errorf("codex: no home directory")
+	}
+	return filepath.Join(home, ".codex", "rules", "agented-strict.rules"), nil
+}
+
+// buildCodexRulesFile renders the Starlark .rules content. Each forbidden
+// command becomes a prefix_rule() call; comments at the top point at
+// docs/permissions.md for context.
+func buildCodexRulesFile(cmds []string) string {
+	var sb strings.Builder
+	sb.WriteString("# Written by `ae permissions disable-internals --strict`.\n")
+	sb.WriteString("# Forbids the shell-command fallbacks the agent might reach for\n")
+	sb.WriteString("# instead of driving `ae`. Remove with the matching\n")
+	sb.WriteString("# `ae permissions enable-internals --strict`.\n\n")
+	for _, c := range cmds {
+		sb.WriteString("prefix_rule(\n")
+		fmt.Fprintf(&sb, "    pattern = [%q],\n", c)
+		sb.WriteString("    decision = \"forbidden\",\n")
+		fmt.Fprintf(&sb, "    justification = \"agented skill installed: use `ae` instead of `%s`\",\n", c)
+		sb.WriteString(")\n\n")
+	}
+	return sb.String()
 }
 
 // upsertCodexToolDenies adds `<tool> = false` lines under a `[tools]` table
@@ -525,6 +687,64 @@ var geminiTarget = Target{
 		}
 		return mapped, nil
 	},
+	// StrictApply for Gemini: write a sibling policy file with
+	// run_shell_command + argsPattern rules for each forbidden command.
+	// Separate file so DenyApply/DenyRemove stay decoupled from the
+	// strict additions.
+	StrictApply: func(_ string, cmds []string) ([]string, error) {
+		strictPath, err := geminiStrictPolicyPath()
+		if err != nil {
+			return nil, err
+		}
+		body := buildGeminiStrictTOML(cmds)
+		if existing, _ := os.ReadFile(strictPath); string(existing) == body {
+			return nil, nil
+		}
+		if err := os.MkdirAll(filepath.Dir(strictPath), 0o755); err != nil {
+			return nil, err
+		}
+		if err := os.WriteFile(strictPath, []byte(body), 0o644); err != nil {
+			return nil, err
+		}
+		return cmds, nil
+	},
+	StrictRemove: func(_ string, cmds []string) ([]string, error) {
+		strictPath, err := geminiStrictPolicyPath()
+		if err != nil {
+			return nil, err
+		}
+		if _, err := os.Stat(strictPath); err != nil {
+			return nil, nil
+		}
+		if err := os.Remove(strictPath); err != nil {
+			return nil, err
+		}
+		return cmds, nil
+	},
+}
+
+func geminiStrictPolicyPath() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return "", fmt.Errorf("gemini: no home directory")
+	}
+	return filepath.Join(home, ".gemini", "policies", "agented-strict.toml"), nil
+}
+
+func buildGeminiStrictTOML(cmds []string) string {
+	var sb strings.Builder
+	sb.WriteString("# Written by `ae permissions disable-internals --strict`.\n")
+	sb.WriteString("# Forbids the shell-command fallbacks for run_shell_command.\n")
+	sb.WriteString("# Remove with `ae permissions enable-internals --strict`.\n\n")
+	for _, c := range cmds {
+		sb.WriteString("[[rule]]\n")
+		sb.WriteString("toolName = \"run_shell_command\"\n")
+		fmt.Fprintf(&sb, "argsPattern = \"^%s(\\\\s|$)\"\n", c)
+		sb.WriteString("decision = \"deny\"\n")
+		sb.WriteString("priority = 110\n")
+		fmt.Fprintf(&sb, "denyMessage = \"agented skill installed: use `ae` instead of `%s`\"\n\n", c)
+	}
+	return sb.String()
 }
 
 func geminiPolicyPath() (string, error) {
@@ -639,9 +859,15 @@ func anyArray(s []string) []any {
 type InstallOptions struct {
 	Selected  string // "all" or a specific target name
 	Scope     Scope
-	Workspace string // required for ScopeProject
+	Workspace string   // required for ScopeProject
 	Rules     []string // empty -> DefaultRules
 	DryRun    bool
+
+	// Strict, when true on a disable-internals call, also adds the
+	// shell-command denies from DefaultStrictShellCmds (cat, sed, awk,
+	// vi, ...) via each target's StrictApply. The CLI surfaces this as
+	// `--strict` on `ae permissions disable-internals`.
+	Strict bool
 }
 
 // Install adds rules to the resolved target file(s) and returns one Result
@@ -810,6 +1036,11 @@ type UninstallOptions struct {
 	Workspace string
 	Rules     []string // empty -> DefaultRules
 	DryRun    bool
+
+	// Strict mirrors InstallOptions.Strict: when true, also removes the
+	// shell-command deny additions made by `--strict`. Surfaced as
+	// `--strict` on `ae permissions enable-internals`.
+	Strict bool
 }
 
 // Uninstall removes ae's allow rules from each target's config.
@@ -874,13 +1105,17 @@ func InstallDenies(opts InstallOptions) ([]Result, error) {
 	if len(rules) == 0 {
 		rules = DefaultDenyRules
 	}
+	shellCmds := []string{}
+	if opts.Strict {
+		shellCmds = DefaultStrictShellCmds
+	}
 	results := make([]Result, 0, len(Targets))
 	if opts.Selected != "" && opts.Selected != "all" {
 		t := FindTarget(opts.Selected)
 		if t == nil {
 			return nil, fmt.Errorf("unknown target %q", opts.Selected)
 		}
-		results = append(results, denyApplyOne(t, opts.Scope, opts.Workspace, rules, opts.DryRun))
+		results = append(results, denyApplyOne(t, opts.Scope, opts.Workspace, rules, shellCmds, opts.DryRun))
 		return results, nil
 	}
 	for i := range Targets {
@@ -889,7 +1124,7 @@ func InstallDenies(opts InstallOptions) ([]Result, error) {
 			results = append(results, Result{Target: t.Name, Status: StatusSkipped, Reason: reason})
 			continue
 		}
-		results = append(results, denyApplyOne(t, opts.Scope, opts.Workspace, rules, opts.DryRun))
+		results = append(results, denyApplyOne(t, opts.Scope, opts.Workspace, rules, shellCmds, opts.DryRun))
 	}
 	return results, nil
 }
@@ -903,22 +1138,26 @@ func UninstallDenies(opts UninstallOptions) ([]Result, error) {
 	if len(rules) == 0 {
 		rules = DefaultDenyRules
 	}
+	shellCmds := []string{}
+	if opts.Strict {
+		shellCmds = DefaultStrictShellCmds
+	}
 	results := make([]Result, 0, len(Targets))
 	if opts.Selected != "" && opts.Selected != "all" {
 		t := FindTarget(opts.Selected)
 		if t == nil {
 			return nil, fmt.Errorf("unknown target %q", opts.Selected)
 		}
-		results = append(results, denyRemoveOne(t, opts.Scope, opts.Workspace, rules, opts.DryRun))
+		results = append(results, denyRemoveOne(t, opts.Scope, opts.Workspace, rules, shellCmds, opts.DryRun))
 		return results, nil
 	}
 	for i := range Targets {
-		results = append(results, denyRemoveOne(&Targets[i], opts.Scope, opts.Workspace, rules, opts.DryRun))
+		results = append(results, denyRemoveOne(&Targets[i], opts.Scope, opts.Workspace, rules, shellCmds, opts.DryRun))
 	}
 	return results, nil
 }
 
-func denyApplyOne(t *Target, scope Scope, workspace string, rules []string, dryRun bool) Result {
+func denyApplyOne(t *Target, scope Scope, workspace string, rules []string, shellCmds []string, dryRun bool) Result {
 	if t.DenyApply == nil {
 		return Result{Target: t.Name, Status: StatusSkipped,
 			Reason: t.Name + ": deny-list schema not yet known; track in github.com/frane/agented for support"}
@@ -931,11 +1170,26 @@ func denyApplyOne(t *Target, scope Scope, workspace string, rules []string, dryR
 		return Result{Target: t.Name, Status: StatusSkipped, Reason: "not supported in chosen scope"}
 	}
 	if dryRun {
-		return Result{Target: t.Name, Status: StatusWouldWrite, Path: path, Added: rules}
+		preview := make([]string, 0, len(rules)+len(shellCmds))
+		preview = append(preview, rules...)
+		for _, c := range shellCmds {
+			preview = append(preview, "shell:"+c)
+		}
+		return Result{Target: t.Name, Status: StatusWouldWrite, Path: path, Added: preview}
 	}
 	added, err := t.DenyApply(path, rules)
 	if err != nil {
 		return Result{Target: t.Name, Status: StatusError, Path: path, Reason: err.Error()}
+	}
+	// Strict: also push shell-command denies through the per-target StrictApply.
+	if len(shellCmds) > 0 && t.StrictApply != nil {
+		strictAdded, serr := t.StrictApply(path, shellCmds)
+		if serr != nil {
+			return Result{Target: t.Name, Status: StatusError, Path: path, Reason: serr.Error()}
+		}
+		for _, c := range strictAdded {
+			added = append(added, "shell:"+c)
+		}
 	}
 	if len(added) == 0 {
 		return Result{Target: t.Name, Status: StatusUnchanged, Path: path}
@@ -943,7 +1197,7 @@ func denyApplyOne(t *Target, scope Scope, workspace string, rules []string, dryR
 	return Result{Target: t.Name, Status: StatusInstalled, Path: path, Added: added}
 }
 
-func denyRemoveOne(t *Target, scope Scope, workspace string, rules []string, dryRun bool) Result {
+func denyRemoveOne(t *Target, scope Scope, workspace string, rules []string, shellCmds []string, dryRun bool) Result {
 	if t.DenyRemove == nil {
 		return Result{Target: t.Name, Status: StatusSkipped,
 			Reason: t.Name + ": deny-list schema not yet known; track in github.com/frane/agented for support"}
@@ -955,15 +1209,28 @@ func denyRemoveOne(t *Target, scope Scope, workspace string, rules []string, dry
 	if path == "" {
 		return Result{Target: t.Name, Status: StatusSkipped, Reason: "not supported in chosen scope"}
 	}
-	if _, err := os.Stat(path); err != nil {
+	if _, err := os.Stat(path); err != nil && t.StrictRemove == nil {
 		return Result{Target: t.Name, Status: StatusNotFound, Path: path}
 	}
 	if dryRun {
 		return Result{Target: t.Name, Status: StatusWouldWrite, Path: path}
 	}
-	removed, err := t.DenyRemove(path, rules)
-	if err != nil {
-		return Result{Target: t.Name, Status: StatusError, Path: path, Reason: err.Error()}
+	var removed []string
+	if _, statErr := os.Stat(path); statErr == nil {
+		r, derr := t.DenyRemove(path, rules)
+		if derr != nil {
+			return Result{Target: t.Name, Status: StatusError, Path: path, Reason: derr.Error()}
+		}
+		removed = append(removed, r...)
+	}
+	if len(shellCmds) > 0 && t.StrictRemove != nil {
+		strictRemoved, serr := t.StrictRemove(path, shellCmds)
+		if serr != nil {
+			return Result{Target: t.Name, Status: StatusError, Path: path, Reason: serr.Error()}
+		}
+		for _, c := range strictRemoved {
+			removed = append(removed, "shell:"+c)
+		}
 	}
 	if len(removed) == 0 {
 		return Result{Target: t.Name, Status: StatusUnchanged, Path: path}

@@ -3,6 +3,26 @@
 All notable changes to agented are documented here. The format is based on [Keep a Changelog](https://keepachangelog.com), and the project follows [Semantic Versioning](https://semver.org).
 
 
+## [v0.4.9] - 2026-06-01
+
+### Features
+
+- **`ae permissions disable-internals --strict`** (and its `enable-internals --strict` pair). The nuclear option: extends the built-in tool denies with shell-command denies for the obvious editor/reader fallbacks an agent reaches for via Bash / run_shell_command / Codex shell:
+
+  `cat, sed, awk, head, tail, vi, vim, nano, less, more, ed, emacs, code`
+
+  Discovery + version-control tools (`grep`, `find`, `ls`, `git`) stay allowed. Per-target output:
+
+  | Target | What `--strict` writes |
+  |---|---|
+  | claude | `Bash(<cmd> *)` entries appended to `permissions.deny` in the same settings.json |
+  | codex | new file `~/.codex/rules/agented-strict.rules` with `prefix_rule(..., forbidden)` calls (Starlark) |
+  | gemini | new file `~/.gemini/policies/agented-strict.toml` with `run_shell_command` + `argsPattern` rules |
+  | openclaw | n/a |
+
+  Pair with the existing `disable-internals` (which already denies Read/Edit/Write/NotebookEdit). The strict flag is additive and reversible — `enable-internals --strict` removes both layers cleanly.
+
+
 ## [v0.4.8] - 2026-05-13
 
 ### Fixes
