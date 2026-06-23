@@ -27,6 +27,7 @@ func registerVerbs(a *App, root *cobra.Command) {
 		newSearchCmd(a),
 		newDiffCmd(a),
 		newLogCmd(a),
+		newDiagCmd(a),
 		newReplaceCmd(a),
 		newInsertCmd(a),
 		newDeleteCmd(a),

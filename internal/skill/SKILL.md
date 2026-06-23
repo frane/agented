@@ -1,6 +1,6 @@
 ---
 name: agented
-version: 1.2.10
+version: 1.3.0
 binary: ae
 description: A text editor for LLMs, not humans.
 ---
@@ -92,6 +92,7 @@ These are the operations that motivate reaching for `ae` over the built-ins.
 | `annotate list` | -| `<path>`                       | `id\tts\tactor\tcontent`  | Recall notes from prior sessions      |
 | `show`   | -     | `<path> [--edit <id>] [--no-color]` | colored, syntax-highlighted unified diff | Display a change to the user. NOT for tool result chains; lean tab format is the default everywhere else |
 | `symbols` | `sy` | `[<path>] [--kind <k>] [--pattern <re>]` | `sym\t<kind>\t<file>:<line>:<col>\t<name>` | List symbols (file or workspace). IDE mode only; falls through to `lsp_unavailable` when daemon is off |
+| `diag`   | -     | `[<path>] [--severity errors\|warnings\|all\|none] [--wait-ms N]` | `diag\t<sev>\t<file>:<line>:<col>\t<msg>\t<source>` | Pull LSP diagnostics on demand — one file, or the whole workspace when path is omitted. `--wait-ms` polls past the LSP's async publish lag. IDE mode only |
 
 ## Writing verbs (use `--expect <state_token>`)
 
@@ -345,6 +346,8 @@ When IDE mode is active, mutating verbs (`ae save`, `ae replace`, `ae apply`, et
 Diagnostics are informational. The operation succeeded; the diagnostics report current LSP findings on the file. Decide whether to act on them based on the task.
 
 The absence of diag lines does not mean the file is clean. It means either there are no diagnostics, the LSP hasn't analyzed yet, the language has no LSP configured, or the daemon isn't running. Don't infer file health from absence of diagnostics. If the user asks "is this file clean?", answer "no diagnostics returned" rather than "the file is clean."
+
+To pull diagnostics on demand instead of waiting for them to ride along on an edit, use `ae diag [path]` — omit the path for a workspace-wide sweep across all open files. Language servers publish asynchronously (often a second or two after a change), so pass `--wait-ms <N>` to poll until diagnostics appear or the timeout elapses; this is the reliable way to confirm an edit parsed without falling back to a full compile. Filter with `--severity errors|warnings|all|none`. Over MCP the same diagnostics also ride inline on every tool response that touched a file (a `diag` field on the JSON result), and `ae_diag` is exposed as a dedicated tool (with `wait_ms`).
 
 A language can run multiple LSP servers. The first listed answers symbol/reference/definition queries; all of them publish diagnostics, tagged by source server in `diag` lines:
 

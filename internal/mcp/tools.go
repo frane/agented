@@ -77,6 +77,27 @@ func RegisterTools(s *mserver.MCPServer, pool *cmd.Pool, stderr io.Writer) {
 		}, pool, stderr, (*cmd.Engine).Status),
 	)
 
+	// diag
+	s.AddTool(
+		mcpgo.NewTool("ae_diag",
+			mcpgo.WithDescription("LSP diagnostics for a file (or the whole workspace when path is omitted). Diagnostics are published asynchronously by the language server, so after an edit pass wait_ms to poll for them. severity: errors|warnings|all|none."),
+			mcpgo.WithString("path", mcpgo.Description("File path; omit for workspace-wide diagnostics across all open files")),
+			mcpgo.WithString("severity", mcpgo.Description("Severity filter: errors|warnings|all|none (default: ide.diagnostics.default)")),
+			mcpgo.WithNumber("limit", mcpgo.Description("Max diagnostics to return; 0 = config default (50)")),
+			mcpgo.WithNumber("wait_ms", mcpgo.Description("Poll up to this many milliseconds for diagnostics to appear (language servers lag ~seconds behind an edit)")),
+		),
+		poolHandler(func(args map[string]any) (string, cmd.DiagInput, error) {
+			path, _ := args["path"].(string)
+			sev, _ := args["severity"].(string)
+			return path, cmd.DiagInput{
+				Path:   path,
+				Filter: sev,
+				Limit:  numberArg(args, "limit"),
+				WaitMs: numberArg(args, "wait_ms"),
+			}, nil
+		}, pool, stderr, (*cmd.Engine).Diag),
+	)
+
 	// view
 	s.AddTool(
 		mcpgo.NewTool("ae_view",

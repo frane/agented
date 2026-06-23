@@ -3,6 +3,15 @@
 All notable changes to agented are documented here. The format is based on [Keep a Changelog](https://keepachangelog.com), and the project follows [Semantic Versioning](https://semver.org).
 
 
+## [v0.5.0] - 2026-06-23
+
+### Features
+
+- **`ae diag` verb + diagnostics over MCP.** `agented` already ran language servers and cached their diagnostics, but the MCP surface never exposed them — an agent editing through `mcp__agented__ae_*` got `saved: true` with no way to tell whether the edit even parsed, short of a full `go build` / `cargo check`. This release closes that gap:
+  - New **`ae diag [path]`** verb (MCP tool `ae_diag`): pull LSP diagnostics for one file, or the whole workspace when the path is omitted. Flags: `--severity errors|warnings|all|none`, `--limit`, and `--wait-ms <N>` to poll past the language server's asynchronous publish lag.
+  - **Inline diagnostics on MCP responses** that touch a file: edit / open / save tool results now carry a `diag` field with the file's current diagnostics, at parity with the CLI's `diag` lines.
+  - Language-agnostic — gopls, tsserver, eslint, pyright, ruff, rust-analyzer, or any configured LSP, routed by file extension. Each diagnostic is self-describing: severity, range, message, source, rule id, source server, and path.
+
 ## [v0.4.9] - 2026-06-01
 
 ### Features

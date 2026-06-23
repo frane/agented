@@ -130,6 +130,9 @@ func buildJSON(r *cmd.Result) any {
 	if r.Merge != nil {
 		m["merge"] = r.Merge
 	}
+	if r.Diag != nil {
+		m["diag"] = r.Diag
+	}
 	return m
 }
 

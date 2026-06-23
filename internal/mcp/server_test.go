@@ -82,7 +82,7 @@ func TestMCPListsExpectedTools(t *testing.T) {
 		have[tool.Name] = true
 	}
 	want := []string{
-		"ae_open", "ae_close", "ae_list", "ae_status",
+		"ae_open", "ae_close", "ae_list", "ae_status", "ae_diag",
 		"ae_view", "ae_search", "ae_diff", "ae_log",
 		"ae_replace", "ae_insert", "ae_delete",
 		"ae_undo", "ae_redo", "ae_head", "ae_branches",

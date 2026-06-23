@@ -65,6 +65,7 @@ type Result struct {
 	Merge    *MergeResult
 	Find     *FindResult
 	Extract  *ExtractResult
+	Diag     *DiagResult `json:"Diag,omitempty"`
 }
 
 // OpenResult is returned by the open verb.

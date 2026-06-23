@@ -32,6 +32,7 @@ type Diagnostic struct {
 	RuleID    string
 	CreatedAt    int64
 	SourceServer string // The LSP server name that published this diagnostic.
+	Path         string `json:",omitempty"` // Resolved file path; filled at query/emit time, never stored.
 }
 
 // DiagnosticFilter selects which severities to surface.

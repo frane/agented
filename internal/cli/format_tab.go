@@ -167,6 +167,23 @@ func emitTab(w io.Writer, r *cmd.Result, header, includeToken bool) error {
 				e.CreatedAt.Format("2006-01-02T15:04:05Z"), e.Actor, e.Command, e.Result, eid)
 		}
 		return nil
+	case r.Diag != nil:
+		if r.Diag.Unavailable {
+			fmt.Fprintln(w, "diag\tunavailable\tide mode is off (set ide.enabled=true and run `ae lsp`)")
+			return nil
+		}
+		for _, d := range r.Diag.Diagnostics {
+			loc := d.Path
+			if loc == "" {
+				loc = r.Diag.Path
+			}
+			fmt.Fprintf(w, "diag\t%s\t%s:%d:%d\t%s\t%s\n",
+				d.Severity, loc, d.Line, d.Col, d.Message, d.Source)
+		}
+		if r.Diag.Truncated {
+			fmt.Fprintln(w, "diag\ttruncated\tmore diagnostics exist; raise --limit")
+		}
+		return nil
 	case r.Edit != nil:
 		fmt.Fprintf(w, "edit_id=%d\thead_edit_id=%d\tline_delta=%d\tline_count=%d\tstate_token=%s\n",
 			r.Edit.NewEditID, r.Edit.NewHeadID, r.Edit.LineDelta, r.Edit.NewLineCount, r.StateToken)

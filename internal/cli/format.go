@@ -37,7 +37,9 @@ func (a *App) emit(r *cmd.Result) error {
 // IDE mode is enabled and there are cached diagnostics. Severity filtering
 // and per-call --diagnostics overrides are honored.
 func (a *App) emitDiagnostics(r *cmd.Result) {
-	if r == nil || r.FileID == nil || a.cfg == nil || !a.cfg.IDE.Enabled {
+	// r.Diag is already rendered by emitTab/emitJSON (the `ae diag` verb), so
+	// skip the implicit append to avoid printing diagnostics twice.
+	if r == nil || r.Diag != nil || r.FileID == nil || a.cfg == nil || !a.cfg.IDE.Enabled {
 		return
 	}
 	if a.NoDiagnostics {

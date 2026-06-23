@@ -171,3 +171,33 @@ func newLogCmd(a *App) *cobra.Command {
 	c.Flags().StringVar(&actor, "actor", "", "Filter by actor")
 	return c
 }
+
+func newDiagCmd(a *App) *cobra.Command {
+	var (
+		severity string
+		limit    int
+		waitMs   int
+	)
+	c := &cobra.Command{
+		Use:   "diag [path]",
+		Short: "Show LSP diagnostics for a file (or the whole workspace when path is omitted)",
+		Args:  cobra.RangeArgs(0, 1),
+		RunE: func(_ *cobra.Command, args []string) error {
+			path := ""
+			if len(args) == 1 {
+				path = args[0]
+			}
+			res, err := a.engine.Diag(cmd.DiagInput{Path: path, Filter: severity, Limit: limit, WaitMs: waitMs})
+			if err != nil {
+				a.auditErr("diag", map[string]any{"path": path}, err.Error(), nil, nil)
+				return wrapErr(err)
+			}
+			a.auditOK("diag", map[string]any{"path": path}, res.FileID, nil)
+			return a.emit(res)
+		},
+	}
+	c.Flags().StringVarP(&severity, "severity", "s", "", "Severity filter: errors|warnings|all|none (default: config)")
+	c.Flags().IntVarP(&limit, "limit", "L", 0, "Max diagnostics (default 50)")
+	c.Flags().IntVar(&waitMs, "wait-ms", 0, "Poll up to N ms for diagnostics to appear (language servers lag behind edits)")
+	return c
+}

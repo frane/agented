@@ -121,6 +121,10 @@ func poolHandler[Req any](
 		}
 		// Best-effort LSP notify on writes; reads return early inside.
 		engine.NotifyLSPIfWrite(out, false, stderr)
+		// Attach cached LSP diagnostics for the touched file so edit/
+		// open/save responses carry them inline (parity with the CLI's diag
+		// lines). No-op when IDE mode is off or nothing is cached.
+		engine.AttachDiagnostics(out)
 		j, err := mcpgo.NewToolResultJSON(out)
 		if err != nil {
 			return mcpgo.NewToolResultError(err.Error()), nil
