@@ -59,6 +59,12 @@ func newSession(t *testing.T) *session {
 	t.Helper()
 	d := t.TempDir()
 	s := &session{t: t, dir: d, actor: "tester"}
+	// Isolate from the developer's real global config (~/.agented): a
+	// global ide.enabled=true would make every ae call here stall on LSP
+	// autostart and trip timing-sensitive scenarios (e.g. the 1s
+	// auto-rollback window). Tests that need a specific HOME set their
+	// own envExt.
+	s.envExt = []string{"HOME=" + t.TempDir()}
 	if err := s.runOK("init").err; err != nil {
 		t.Fatalf("init: %v", err)
 	}

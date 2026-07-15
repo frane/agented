@@ -278,3 +278,27 @@ func highlightLine(line, path string, color bool) string {
 	// chroma may include trailing whitespace/newlines; trim end-of-line.
 	return strings.TrimRight(buf.String(), "\n")
 }
+
+// renderCompactDiff prints the compact per-edit delta attached to a write
+// result (EditResult.Diff): '+' rows green, '-' rows red, '@@' hunk headers
+// cyan, the truncation marker dim. Plain pass-through when color is off.
+func renderCompactDiff(w io.Writer, d string, color bool) {
+	for _, ln := range strings.Split(d, "\n") {
+		if !color {
+			fmt.Fprintln(w, ln)
+			continue
+		}
+		switch {
+		case strings.HasPrefix(ln, "@@"):
+			fmt.Fprintln(w, ansiCyanFg+ln+ansiReset)
+		case strings.HasPrefix(ln, "+"):
+			fmt.Fprintln(w, ansiGreenFg+ln+ansiReset)
+		case strings.HasPrefix(ln, "-"):
+			fmt.Fprintln(w, ansiRedFg+ln+ansiReset)
+		case strings.HasPrefix(ln, "…"):
+			fmt.Fprintln(w, ansiDim+ln+ansiReset)
+		default:
+			fmt.Fprintln(w, ln)
+		}
+	}
+}

@@ -25,6 +25,14 @@ type Engine struct {
 	// every touched file once on success, atomically from the disk-side
 	// observer's perspective.
 	suppressAutosave bool
+
+	// EmitEditDiff makes the single-file write verbs (replace / insert /
+	// delete) compute a compact unified delta of the edit and attach it to
+	// EditResult.Diff. Frontends opt in: the CLI enables it when stdout is
+	// a TTY (output.edit_diff="tty", the default) or unconditionally for
+	// "always"; the MCP server only for "always" so agent responses stay
+	// token-lean unless explicitly configured.
+	EmitEditDiff bool
 }
 
 // Result is the canonical return type for verb invocations. Different verbs
@@ -154,6 +162,10 @@ type EditResult struct {
 	Saved          bool   `json:"saved"`
 	LoadedFromDisk bool   `json:"loaded_from_disk"`
 	DriftReason    string `json:"drift_reason,omitempty"`
+
+	// Diff is a compact unified delta of this edit (1 context line, size
+	// capped), present only when the engine's EmitEditDiff is on.
+	Diff string `json:"diff,omitempty"`
 }
 
 // HistoryResult is for undo/redo/head.

@@ -9,6 +9,12 @@ import (
 	"github.com/frane/agented/internal/store"
 )
 
+// ErrNoMatches is returned by pattern-mode replace when the regex matched
+// zero locations and AllowNoMatch was not set. A no-op replace exiting 0 is
+// exactly how stale-content clobbers ship in `replace && save` shell chains,
+// so 0 matches is an error by default.
+var ErrNoMatches = errors.New("no matches")
+
 // ReplaceInput is the input to replace.
 type ReplaceInput struct {
 	Path          string
@@ -21,9 +27,10 @@ type ReplaceInput struct {
 	// Pattern, when non-empty, switches to regex replace mode: every RE2
 	// match of Pattern in the head content is replaced by With (capture
 	// groups via $1, $2, ${name}). Start/End are ignored.
-	Pattern string
-	Limit   int  // cap on number of replacements; 0 = unlimited
-	DryRun  bool // only count matches; don't write
+	Pattern      string
+	Limit        int  // cap on number of replacements; 0 = unlimited
+	DryRun       bool // only count matches; don't write
+	AllowNoMatch bool // treat 0 pattern matches as success instead of ErrNoMatches
 }
 
 // Replace mutates a range of lines, or — when in.Pattern is set — every RE2
@@ -49,6 +56,10 @@ func (e *Engine) Replace(in ReplaceInput) (*Result, error) {
 			fi = fresh
 		}
 	}
+	var oldContent string
+	if e.EmitEditDiff {
+		oldContent, _ = e.Store.HeadContent(fi.ID)
+	}
 	er, conf, err := e.Store.Replace(fi.ID, in.Start, in.End, in.With,
 		store.EditOptions{Actor: e.Actor, TransactionID: txID, ExpectStateToken: in.Expect},
 		e.Config.Concurrency.RequireExpect)
@@ -69,6 +80,7 @@ func (e *Engine) Replace(in ReplaceInput) (*Result, error) {
 			Saved:          saved,
 			LoadedFromDisk: loaded,
 			DriftReason:    driftReason,
+			Diff:           e.editDiff(oldContent, headContent),
 		},
 	}, nil
 }
@@ -83,6 +95,17 @@ func (e *Engine) replacePattern(in ReplaceInput) (*Result, error) {
 	if err != nil {
 		return nil, fmt.Errorf("pattern compile error: %w", err)
 	}
+	// Reconcile disk drift first (parity with the range verbs): the pattern
+	// must run against disk reality, not a stale head.
+	loaded, driftReason, derr := e.autoLoadIfDrifted(fi)
+	if derr != nil {
+		return nil, derr
+	}
+	if loaded {
+		if fresh, _ := e.Store.FileByID(fi.ID); fresh != nil {
+			fi = fresh
+		}
+	}
 	content, err := e.Store.HeadContent(fi.ID)
 	if err != nil {
 		return nil, err
@@ -91,17 +114,23 @@ func (e *Engine) replacePattern(in ReplaceInput) (*Result, error) {
 	if in.Limit > 0 && len(matches) > in.Limit {
 		matches = matches[:in.Limit]
 	}
+	if len(matches) == 0 && !in.DryRun && !in.AllowNoMatch {
+		return nil, fmt.Errorf("pattern %q matched nothing in %s; head and disk unchanged (pass --allow-no-match to treat this as success): %w",
+			in.Pattern, fi.Path, ErrNoMatches)
+	}
 	if len(matches) == 0 || in.DryRun {
-		// Dry-run or no-op: don't commit. Return a Result describing what
-		// would happen.
+		// Dry-run or tolerated no-op: don't commit. Return a Result
+		// describing what would happen.
 		return &Result{
 			FileID:     &fi.ID,
 			StateToken: store.ComputeStateToken(fi.ID, fi.HeadEditID, fi.ContentHash),
 			Edit: &EditResult{Path: fi.Path,
-				NewEditID:    fi.HeadEditID,
-				NewHeadID:    fi.HeadEditID,
-				LineDelta:    0,
-				NewLineCount: fi.LineCount,
+				NewEditID:      fi.HeadEditID,
+				NewHeadID:      fi.HeadEditID,
+				LineDelta:      0,
+				NewLineCount:   fi.LineCount,
+				LoadedFromDisk: loaded,
+				DriftReason:    driftReason,
 			},
 			Warning: fmt.Sprintf("regex matches=%d dry_run=%t", len(matches), in.DryRun),
 		}, nil
@@ -128,11 +157,16 @@ func (e *Engine) replacePattern(in ReplaceInput) (*Result, error) {
 		}
 		return nil, err
 	}
+	saved, _ := e.autoSaveAfterEdit(fi, newContent)
 	return &Result{
 		FileID: &fi.ID, EditID: &er.NewEditID, StateToken: er.NewStateToken,
 		Edit: &EditResult{Path: fi.Path,
 			NewEditID: er.NewEditID, NewHeadID: er.NewHeadID,
 			LineDelta: er.LineDelta, NewLineCount: er.NewLineCount,
+			Saved:          saved,
+			LoadedFromDisk: loaded,
+			DriftReason:    driftReason,
+			Diff:           e.editDiff(content, newContent),
 		},
 		Warning: fmt.Sprintf("regex matches=%d", len(matches)),
 	}, nil
@@ -164,6 +198,10 @@ func (e *Engine) Insert(in InsertInput) (*Result, error) {
 			fi = fresh
 		}
 	}
+	var oldContent string
+	if e.EmitEditDiff {
+		oldContent, _ = e.Store.HeadContent(fi.ID)
+	}
 	er, conf, err := e.Store.Insert(fi.ID, in.After, in.Text,
 		store.EditOptions{Actor: e.Actor, TransactionID: txID, ExpectStateToken: in.Expect},
 		e.Config.Concurrency.RequireExpect)
@@ -182,6 +220,7 @@ func (e *Engine) Insert(in InsertInput) (*Result, error) {
 			NewEditID: er.NewEditID, NewHeadID: er.NewHeadID,
 			LineDelta: er.LineDelta, NewLineCount: er.NewLineCount,
 			Saved: saved, LoadedFromDisk: loaded, DriftReason: driftReason,
+			Diff: e.editDiff(oldContent, headContent),
 		},
 	}, nil
 }
@@ -210,6 +249,10 @@ func (e *Engine) Delete(in DeleteInput) (*Result, error) {
 			fi = fresh
 		}
 	}
+	var oldContent string
+	if e.EmitEditDiff {
+		oldContent, _ = e.Store.HeadContent(fi.ID)
+	}
 	er, conf, err := e.Store.Delete(fi.ID, in.Start, in.End,
 		store.EditOptions{Actor: e.Actor, TransactionID: txID, ExpectStateToken: in.Expect},
 		e.Config.Concurrency.RequireExpect)
@@ -228,6 +271,7 @@ func (e *Engine) Delete(in DeleteInput) (*Result, error) {
 			NewEditID: er.NewEditID, NewHeadID: er.NewHeadID,
 			LineDelta: er.LineDelta, NewLineCount: er.NewLineCount,
 			Saved: saved, LoadedFromDisk: loaded, DriftReason: driftReason,
+			Diff: e.editDiff(oldContent, headContent),
 		},
 	}, nil
 }
@@ -239,7 +283,7 @@ func (e *Engine) prepareWrite(path string, autoOpen, noTx bool) (*store.FileInfo
 	var fi *store.FileInfo
 	var err error
 	if autoOpen {
-		r, oerr := e.Store.OpenFile(e.Actor, path)
+		r, oerr := e.Store.OpenFileOpts(e.Actor, path, e.Config.Concurrency.AutoLoadOnDrift)
 		if oerr != nil {
 			return nil, nil, "", oerr
 		}

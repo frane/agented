@@ -190,6 +190,7 @@ func (a *App) preRun(c *cobra.Command, args []string) error {
 	a.conn = &_dbHandle{db: &coreDB{closer: conn.Close}, path: dbPath}
 	st := store.New(conn)
 	a.engine = &cmd.Engine{Store: st, Config: cfg, Actor: act, DBPath: dbPath}
+	a.engine.EmitEditDiff = a.wantEditDiff()
 
 	// Skill subcommands manage the skill itself; never refuse to run them
 	// because of a version mismatch on the very content they exist to fix.
@@ -273,4 +274,19 @@ func firstAbsArg(args []string) string {
 		}
 	}
 	return ""
+}
+
+// wantEditDiff resolves output.edit_diff for this invocation. "always" →
+// on, "off" → off, "tty" (the default) → only when tab output is headed to
+// a terminal: a human is watching, so show the delta; piped and JSON
+// consumers stay token-lean.
+func (a *App) wantEditDiff() bool {
+	switch a.cfg.Output.EditDiff {
+	case "always":
+		return true
+	case "off":
+		return false
+	default:
+		return a.OutputFormat != "json" && isTTY(a.Stdout)
+	}
 }

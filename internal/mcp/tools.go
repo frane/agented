@@ -470,12 +470,14 @@ func RegisterTools(s *mserver.MCPServer, pool *cmd.Pool, stderr io.Writer) {
 	// save / load
 	s.AddTool(
 		mcpgo.NewTool("ae_save",
-			mcpgo.WithDescription("Write head content to disk."),
+			mcpgo.WithDescription("Write head content to disk. Refuses when disk holds content this workspace never loaded (changed outside ae) unless force=true; run ae_load first to fold it in."),
 			pathArg,
+			mcpgo.WithBoolean("force", mcpgo.Description("Overwrite disk even when its content was never loaded into this workspace")),
 		),
 		poolHandler(func(args map[string]any) (string, cmd.SaveInput, error) {
 			path, _ := args["path"].(string)
-			return path, cmd.SaveInput{Path: path}, nil
+			force, _ := args["force"].(bool)
+			return path, cmd.SaveInput{Path: path, Force: force}, nil
 		}, pool, stderr, (*cmd.Engine).Save),
 	)
 	s.AddTool(

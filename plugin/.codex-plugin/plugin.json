@@ -1,6 +1,6 @@
 {
   "name": "agented",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "A text editor for LLMs, not humans.",
   "author": {
     "name": "Frane Bandov",

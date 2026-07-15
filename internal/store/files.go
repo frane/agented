@@ -22,9 +22,19 @@ type OpenFileResult struct {
 }
 
 // OpenFile registers a file in the workspace. On-disk content is read; if
-// already open, returns the existing record (idempotent). If closed, reopens
-// and creates a new root edit if the on-disk content differs.
+// already open, disk drift is reconciled into a new head edit (see
+// OpenFileOpts). If closed, reopens and creates a new root edit if the
+// on-disk content differs.
 func (s *Store) OpenFile(actor, path string) (*OpenFileResult, error) {
+	return s.OpenFileOpts(actor, path, true)
+}
+
+// OpenFileOpts is OpenFile with control over drift reconciliation for the
+// already-open case. syncDrift=false returns the current head untouched
+// even when disk diverged (the pre-v0.6 behavior, still selectable via
+// concurrency.auto_load_on_drift=false); reopen of a closed file always
+// reconciles, as it always has.
+func (s *Store) OpenFileOpts(actor, path string, syncDrift bool) (*OpenFileResult, error) {
 	abs, err := canonicalize(path)
 	if err != nil {
 		return nil, fmt.Errorf("abs path: %w", err)
@@ -61,7 +71,14 @@ func (s *Store) OpenFile(actor, path string) (*OpenFileResult, error) {
 			return err
 		}
 		if !closedAt.Valid {
-			return s.fillOpenResult(tx, id, &result)
+			if !syncDrift {
+				return s.fillOpenResult(tx, id, &result)
+			}
+			// Already open: reconcile disk drift before answering, so open
+			// never serves a head that is stale relative to disk (writes
+			// made outside ae — git checkouts, other editors — would
+			// otherwise be silently clobbered by a later save).
+			return s.syncHeadWithDisk(tx, id, actor, content, hash, now, "open_drift", &result)
 		}
 		return s.reopen(tx, id, actor, content, hash, now, &result)
 	})
@@ -145,6 +162,17 @@ func (s *Store) reopen(tx *sql.Tx, fid int64, actor string, content []byte, hash
 	if _, err := tx.Exec(`UPDATE files SET closed_at = NULL WHERE id = ?`, fid); err != nil {
 		return err
 	}
+	out.Reopened = true
+	return s.syncHeadWithDisk(tx, fid, actor, content, hash, now, "reopen", out)
+}
+
+// syncHeadWithDisk compares freshly-read disk content against the current
+// head. On divergence the disk content is folded in as a new 'load' edit
+// (full-file replace, snapshotted) and ContentReset is set; the previous
+// head stays reachable on the tree. reason labels the edit's args_json
+// ("reopen" | "open_drift") so the audit trail records why the reload
+// happened.
+func (s *Store) syncHeadWithDisk(tx *sql.Tx, fid int64, actor string, content []byte, hash string, now int64, reason string, out *OpenFileResult) error {
 	var headHash string
 	var headID int64
 	err := tx.QueryRow(`
@@ -154,12 +182,11 @@ func (s *Store) reopen(tx *sql.Tx, fid int64, actor string, content []byte, hash
 	if err != nil {
 		return err
 	}
-	out.Reopened = true
 	if headHash == hash {
 		return s.fillOpenResult(tx, fid, out)
 	}
 	// Reload: insert a new edit that's a full-file replace, with a snapshot.
-	args, _ := json.Marshal(map[string]any{"reopen": true})
+	args, _ := json.Marshal(map[string]any{reason: true})
 	beforeBlob, _ := s.blob.Encode(nil)
 	afterBlob, err := s.blob.Encode(content)
 	if err != nil {
@@ -201,6 +228,7 @@ func (s *Store) reopen(tx *sql.Tx, fid int64, actor string, content []byte, hash
 	if err := s.recomputeMarksForEdit(tx, fid, headID, editID, rangeStart, rangeEnd, lineCount-prevLines, lineCount); err != nil {
 		return err
 	}
+	s.invalidateAllCache()
 	out.ContentReset = true
 	return s.fillOpenResult(tx, fid, out)
 }
@@ -390,6 +418,21 @@ func (s *Store) FileWithStateToken(fileID int64) (*FileInfo, string, error) {
 		return nil, "", err
 	}
 	return fi, ComputeStateToken(fi.ID, fi.HeadEditID, fi.ContentHash), nil
+}
+
+// HashSeen reports whether any edit in the file's history ever recorded
+// this content hash — i.e. whether this workspace has observed that exact
+// content at some point. Save uses it to refuse overwriting disk content
+// the workspace never loaded (written outside ae).
+func (s *Store) HashSeen(fileID int64, hash string) (bool, error) {
+	var n int
+	err := s.withReadTx(func(tx *sql.Tx) error {
+		return tx.QueryRow(
+			`SELECT COUNT(*) FROM edits WHERE file_id = ? AND content_hash = ?`,
+			fileID, hash,
+		).Scan(&n)
+	})
+	return n > 0, err
 }
 
 // AbsPath converts a path to an absolute, canonical path.

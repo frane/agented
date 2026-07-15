@@ -2,10 +2,17 @@ package cli
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/frane/agented/internal/cmd"
 	"github.com/frane/agented/internal/lsp"
 )
+
+// colorEnabled reports whether ANSI color should be emitted on stdout:
+// color not disabled by flag or NO_COLOR, and stdout is a terminal.
+func (a *App) colorEnabled() bool {
+	return !a.NoColor && os.Getenv("NO_COLOR") == "" && isTTY(a.Stdout)
+}
 
 // emit writes a Result to the App's stdout in either tab or json mode.
 // Returns an error only if writing fails.
@@ -26,6 +33,9 @@ func (a *App) emit(r *cmd.Result) error {
 	} else {
 		if err := emitTab(a.Stdout, r, a.Header, a.cfg.Output.IncludeStateToken); err != nil {
 			return err
+		}
+		if r.Edit != nil && r.Edit.Diff != "" {
+			renderCompactDiff(a.Stdout, r.Edit.Diff, a.colorEnabled())
 		}
 	}
 	a.notifyDaemonIfWrite(r)

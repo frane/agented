@@ -4,6 +4,7 @@ import (
 	"errors"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 
 	"github.com/frane/agented/internal/cmd"
 	"github.com/frane/agented/internal/store"
@@ -41,10 +42,11 @@ func attachReplaceFlags(c *cobra.Command, ef *editFlags) {
 
 func newReplaceCmd(a *App) *cobra.Command {
 	var (
-		rangeStr string
-		pattern  string
-		limit    int
-		dryRun   bool
+		rangeStr     string
+		pattern      string
+		limit        int
+		dryRun       bool
+		allowNoMatch bool
 	)
 	ef := &editFlags{}
 	c := &cobra.Command{
@@ -66,6 +68,7 @@ func newReplaceCmd(a *App) *cobra.Command {
 				Pattern:       pattern,
 				Limit:         limit,
 				DryRun:        dryRun,
+				AllowNoMatch:  allowNoMatch,
 			}
 			argsLog := map[string]any{"path": args[0]}
 			if pattern == "" {
@@ -96,10 +99,19 @@ func newReplaceCmd(a *App) *cobra.Command {
 		},
 	}
 	c.Flags().StringVarP(&rangeStr, "range", "r", "", "Line range to replace (e.g. 5:8); ignored when --pattern is set")
-	c.Flags().StringVarP(&pattern, "pattern", "p", "", "RE2 regex; replace every match with --with")
+	c.Flags().StringVarP(&pattern, "pattern", "p", "", "RE2 regex; replace every match with --with (0 matches is an error unless --allow-no-match)")
 	c.Flags().IntVarP(&limit, "limit", "L", 0, "Cap on regex replacements (0 = unlimited)")
 	c.Flags().BoolVarP(&dryRun, "dry-run", "n", false, "Count matches without writing")
+	c.Flags().BoolVar(&allowNoMatch, "allow-no-match", false, "Exit 0 when --pattern matches nothing (by default 0 matches is an error, so `&& ae save` chains stop)")
 	attachReplaceFlags(c, ef)
+	// --text is accepted as an alias for --with: insert/delete take --text,
+	// and sed/sd muscle memory makes it the first guess.
+	c.Flags().SetNormalizeFunc(func(f *pflag.FlagSet, name string) pflag.NormalizedName {
+		if name == "text" {
+			name = "with"
+		}
+		return pflag.NormalizedName(name)
+	})
 	return c
 }
 

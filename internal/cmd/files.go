@@ -18,7 +18,7 @@ type OpenInput struct {
 
 // Open registers a file in the workspace.
 func (e *Engine) Open(in OpenInput) (*Result, error) {
-	r, err := e.Store.OpenFile(e.Actor, in.Path)
+	r, err := e.Store.OpenFileOpts(e.Actor, in.Path, e.Config.Concurrency.AutoLoadOnDrift)
 	if err != nil {
 		return nil, err
 	}
@@ -31,6 +31,9 @@ func (e *Engine) Open(in OpenInput) (*Result, error) {
 			ContentReset: r.ContentReset,
 			Annotations:  r.Annotations,
 		},
+	}
+	if r.ContentReset {
+		res.Warning = fmt.Sprintf("disk content differed from workspace head; disk state loaded as new head edit %d (previous head recoverable via ae undo / ae branches)", r.File.HeadEditID)
 	}
 	return res, nil
 }

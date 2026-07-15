@@ -10,9 +10,18 @@ import (
 )
 
 // SaveInput is the input to save.
-type SaveInput struct{ Path string }
+type SaveInput struct {
+	Path string
+	// Force skips the unseen-disk-content guard and overwrites whatever
+	// is on disk with head content.
+	Force bool
+}
 
-// Save writes head content to disk.
+// Save writes head content to disk. When the on-disk content differs from
+// head and was never seen by this workspace (no edit in the file's history
+// carries its hash), save refuses: the file changed outside ae, and a blind
+// write would destroy that work. `ae load` folds the disk state into
+// history first; Force overrides.
 func (e *Engine) Save(in SaveInput) (*Result, error) {
 	fi, err := e.resolveFile(in.Path)
 	if err != nil {
@@ -26,14 +35,27 @@ func (e *Engine) Save(in SaveInput) (*Result, error) {
 	if err != nil {
 		return nil, err
 	}
-	// Short-circuit: if the on-disk file already matches head content, skip
-	// the write so save is a true no-op when there's nothing to commit.
-	if disk, err := os.ReadFile(abs); err == nil && store.HashContent(string(disk)) == fi.ContentHash {
-		return &Result{
-			FileID:     &fi.ID,
-			StateToken: store.ComputeStateToken(fi.ID, fi.HeadEditID, fi.ContentHash),
-			Save:       &SaveResult{Path: abs, Hash: fi.ContentHash, Bytes: len(content)},
-		}, nil
+	if disk, derr := os.ReadFile(abs); derr == nil {
+		diskHash := store.HashContent(string(disk))
+		// Short-circuit: if the on-disk file already matches head content,
+		// skip the write so save is a true no-op when there's nothing to
+		// commit.
+		if diskHash == fi.ContentHash {
+			return &Result{
+				FileID:     &fi.ID,
+				StateToken: store.ComputeStateToken(fi.ID, fi.HeadEditID, fi.ContentHash),
+				Save:       &SaveResult{Path: abs, Hash: fi.ContentHash, Bytes: len(content)},
+			}, nil
+		}
+		if !in.Force {
+			seen, serr := e.Store.HashSeen(fi.ID, diskHash)
+			if serr != nil {
+				return nil, serr
+			}
+			if !seen {
+				return nil, fmt.Errorf("refusing to save %s: on-disk content was never loaded into this workspace — the file changed outside ae; run `ae load` to fold the disk state into history (then re-apply or merge), or `ae save --force` to overwrite", abs)
+			}
+		}
 	}
 	if _, err := atomicfile.New(abs).Write([]byte(content)); err != nil {
 		return nil, err

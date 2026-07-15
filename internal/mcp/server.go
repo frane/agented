@@ -115,6 +115,10 @@ func poolHandler[Req any](
 		if err != nil {
 			return mcpgo.NewToolResultError(err.Error()), nil
 		}
+		// Compact per-edit deltas ride along only when explicitly configured:
+		// MCP responses land in an agent's context window, so "tty" (the CLI
+		// default) counts as off here.
+		engine.EmitEditDiff = engine.Config != nil && engine.Config.Output.EditDiff == "always"
 		out, err := run(engine, typed)
 		if err != nil {
 			return mcpgo.NewToolResultErrorFromErr(err.Error(), err), nil

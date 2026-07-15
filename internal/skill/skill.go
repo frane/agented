@@ -17,7 +17,7 @@ import (
 
 // Version is the canonical version of the embedded SKILL.md. Bump when
 // changing the skill content.
-const Version = "1.3.0"
+const Version = "1.4.0"
 
 //go:embed SKILL.md
 var content string

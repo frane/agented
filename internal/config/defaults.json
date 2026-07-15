@@ -31,7 +31,8 @@
     "default_format": "tab",
     "include_state_token": true,
     "syntax_highlight": true,
-    "nudge_on_pipe": true
+    "nudge_on_pipe": true,
+    "edit_diff": "tty"
   },
   "skill": {
     "enforce_version": "major"

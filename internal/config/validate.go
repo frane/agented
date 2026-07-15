@@ -24,6 +24,11 @@ func Validate(c *Config) error {
 	default:
 		return fmt.Errorf("output.default_format: invalid %q", c.Output.DefaultFormat)
 	}
+	switch c.Output.EditDiff {
+	case "", "off", "tty", "always":
+	default:
+		return fmt.Errorf("output.edit_diff: invalid %q (want off|tty|always)", c.Output.EditDiff)
+	}
 	switch c.Skill.EnforceVersion {
 	case "major", "any", "off":
 	default:
