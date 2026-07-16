@@ -12,7 +12,17 @@ import (
 )
 
 // validMCPTargets are the values accepted by `ae mcp install --target`.
-var validMCPTargets = []string{"all", "claude-code", "claude-desktop", "codex"}
+// Names match the internal/agents registry; "claude-code" is kept as an
+// alias for "claude" (normalizeMCPTarget) since older docs used it.
+var validMCPTargets = []string{"all", "claude", "claude-code", "claude-desktop", "codex", "cursor", "gemini"}
+
+// normalizeMCPTarget maps CLI aliases onto registry target names.
+func normalizeMCPTarget(t string) string {
+	if t == "claude-code" {
+		return "claude"
+	}
+	return t
+}
 
 func newMCPCmd(a *App) *cobra.Command {
 	c := &cobra.Command{
@@ -51,7 +61,7 @@ func newMCPInstallCmd(a *App) *cobra.Command {
 				cmdPath = resolveSelfPath()
 			}
 			opts := mcpinstall.InstallOptions{
-				Selected:  target,
+				Selected:  normalizeMCPTarget(target),
 				Scope:     parseMCPScope(scope),
 				Workspace: workspace,
 				Command:   cmdPath,
@@ -106,7 +116,7 @@ func newMCPUninstallCmd(a *App) *cobra.Command {
 			}
 			workspace, _ := workspaceForScope(a, scope)
 			results, err := mcpinstall.Uninstall(mcpinstall.UninstallOptions{
-				Selected:  target,
+				Selected:  normalizeMCPTarget(target),
 				Scope:     parseMCPScope(scope),
 				Workspace: workspace,
 				DryRun:    dryRun,
@@ -117,14 +127,14 @@ func newMCPUninstallCmd(a *App) *cobra.Command {
 			return printMCPResults(a.Stdout, results, dryRun)
 		},
 	}
-	c.Flags().StringVarP(&target, "target", "t", "all", "Target client: all, claude-code, claude-desktop, codex")
+	c.Flags().StringVarP(&target, "target", "t", "all", "Target client: all, claude, claude-desktop, codex, cursor, gemini")
 	c.Flags().StringVarP(&scope, "scope", "s", "global", "Scope: global or project")
 	c.Flags().BoolVarP(&dryRun, "dry-run", "n", false, "Show what would change, don't write")
 	return c
 }
 
 func attachMCPInstallFlags(c *cobra.Command, target, scope *string, dryRun *bool, command *string) {
-	c.Flags().StringVarP(target, "target", "t", "all", "Target client: all, claude-code, claude-desktop, codex")
+	c.Flags().StringVarP(target, "target", "t", "all", "Target client: all, claude, claude-desktop, codex, cursor, gemini")
 	c.Flags().StringVarP(scope, "scope", "s", "global", "Scope: global or project")
 	c.Flags().BoolVarP(dryRun, "dry-run", "n", false, "Show what would write, don't write")
 	c.Flags().StringVar(command, "command", "", "Path to ae binary (default: detected from current process)")

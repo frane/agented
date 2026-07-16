@@ -15,6 +15,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/frane/agented/internal/mcp"
 )
 
 // DefaultRules are the allow-patterns ae installs into a target's config.
@@ -154,8 +156,10 @@ var claudeTarget = Target{
 	Name: "claude",
 	// Claude Code is the only client with an MCP-tool allow syntax: the
 	// bare server name allows every tool on ae's MCP server, so agents
-	// aren't prompted for ae_* tool calls either.
-	ExtraRules: []string{"mcp__agented"},
+	// aren't prompted for ae_* tool calls either. Both spellings are
+	// covered: a user-scope `claude mcp add` server ("mcp__agented") and
+	// the plugin-shipped server ("mcp__plugin_agented_agented").
+	ExtraRules: []string{"mcp__agented", "mcp__plugin_agented_agented"},
 	GlobalPath: func() (string, error) {
 		home, err := os.UserHomeDir()
 		if err != nil || home == "" {
@@ -442,14 +446,20 @@ var codexTarget = Target{
 		}
 		return false, "no install detected"
 	},
+	// Codex has no per-shell-command allow list (sandbox_mode +
+	// approval_policy govern Bash), so the generic Bash(ae *) rules are
+	// ignored. What Codex does support is per-MCP-tool approval:
+	// `[mcp_servers.agented.tools.<name>] approval_mode = "approve"` in
+	// config.toml — install writes that for every ae_* tool so MCP calls
+	// don't prompt. No-op when the agented server isn't configured yet
+	// (run `ae mcp install` first).
 	Apply: func(path string, rules []string) ([]string, error) {
-		// Codex's allow story is sandbox_mode + approval_policy, not
-		// per-tool allow rules. Skip silently here so `permissions install`
-		// remains a no-op for codex.
-		return nil, nil
+		_ = rules // Bash-pattern rules don't apply to Codex
+		return upsertCodexMCPApprovals(path, mcp.ToolNames)
 	},
 	Remove: func(path string, rules []string) ([]string, error) {
-		return nil, nil
+		_ = rules
+		return removeCodexMCPApprovals(path, mcp.ToolNames)
 	},
 	DenyApply: func(path string, rules []string) ([]string, error) {
 		// Map canonical names -> Codex's apply_patch (the single edit
@@ -499,6 +509,80 @@ var codexTarget = Target{
 		}
 		return cmds, nil
 	},
+}
+
+// codexMCPServer is the MCP server entry name `ae mcp install` writes into
+// ~/.codex/config.toml (mcpinstall.ServerName; duplicated here to avoid the
+// import). The per-tool approval sections below hang off this table.
+const codexMCPServer = "agented"
+
+// upsertCodexMCPApprovals appends
+//
+//	[mcp_servers.agented.tools.<name>]
+//	approval_mode = "approve"
+//
+// to config.toml for every tool that doesn't already have a section. Tools
+// with an existing section — whatever their mode — are left untouched, so a
+// user's explicit choice always wins. Returns the tool names added. No-op
+// (nil, nil) when the agented MCP server isn't configured in the file.
+func upsertCodexMCPApprovals(path string, tools []string) ([]string, error) {
+	body, err := readOrEmpty(path)
+	if err != nil {
+		return nil, err
+	}
+	if !bytes.Contains(body, []byte("[mcp_servers."+codexMCPServer+"]")) {
+		return nil, nil
+	}
+	var out bytes.Buffer
+	out.Write(body)
+	if len(body) > 0 && body[len(body)-1] != '\n' {
+		out.WriteByte('\n')
+	}
+	var added []string
+	for _, name := range tools {
+		header := "[mcp_servers." + codexMCPServer + ".tools." + name + "]"
+		if bytes.Contains(body, []byte(header)) {
+			continue
+		}
+		out.WriteString("\n" + header + "\napproval_mode = \"approve\"\n")
+		added = append(added, name)
+	}
+	if len(added) == 0 {
+		return nil, nil
+	}
+	if err := os.WriteFile(path, out.Bytes(), 0o644); err != nil {
+		return nil, err
+	}
+	return added, nil
+}
+
+// removeCodexMCPApprovals strips exactly the blocks upsertCodexMCPApprovals
+// writes (header + approval_mode = "approve"). Sections a user changed to a
+// different mode are not touched. Idempotent.
+func removeCodexMCPApprovals(path string, tools []string) ([]string, error) {
+	body, err := readOrEmpty(path)
+	if err != nil || len(body) == 0 {
+		return nil, err
+	}
+	var removed []string
+	for _, name := range tools {
+		block := []byte("[mcp_servers." + codexMCPServer + ".tools." + name + "]\napproval_mode = \"approve\"\n")
+		idx := bytes.Index(body, block)
+		if idx < 0 {
+			continue
+		}
+		start := idx
+		// Drop the blank separator line the writer added, if present.
+		if start >= 2 && body[start-1] == '\n' && body[start-2] == '\n' {
+			start--
+		}
+		body = append(body[:start], body[idx+len(block):]...)
+		removed = append(removed, name)
+	}
+	if len(removed) == 0 {
+		return nil, nil
+	}
+	return removed, os.WriteFile(path, body, 0o644)
 }
 
 func codexRulesPath() (string, error) {

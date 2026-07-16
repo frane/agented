@@ -76,7 +76,7 @@ func buildTargets() []Target {
 			ProjectPath: ag.MCPProject,
 			Detect:      ag.Detect,
 			Apply: func(path string, server map[string]any) (bool, error) {
-				return ag.MCPApply(path, ServerName, server)
+				return ag.MCPApply(path, ServerName, withServerExtras(server, ag.MCPServerExtras))
 			},
 			Remove: func(path string) (bool, error) {
 				return ag.MCPRemove(path, ServerName)
@@ -85,6 +85,25 @@ func buildTargets() []Target {
 				return ag.MCPInspect(path, ServerName)
 			},
 		})
+	}
+	return out
+}
+
+// withServerExtras returns the canonical server entry plus the agent's
+// MCPServerExtras (e.g. Gemini's trust:true). Extras never override
+// canonical keys; the input map is not mutated.
+func withServerExtras(server, extras map[string]any) map[string]any {
+	if len(extras) == 0 {
+		return server
+	}
+	out := make(map[string]any, len(server)+len(extras))
+	for k, v := range server {
+		out[k] = v
+	}
+	for k, v := range extras {
+		if _, exists := out[k]; !exists {
+			out[k] = v
+		}
 	}
 	return out
 }

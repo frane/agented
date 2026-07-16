@@ -69,6 +69,9 @@ func newTestClient(t *testing.T) (*mcpclient.Client, *cmd.Engine, string) {
 	return cli, engine, dir
 }
 
+// TestMCPListsExpectedTools asserts exact two-way sync between the exported
+// ToolNames list and what the server actually registers: a tool added to
+// RegisterTools without a ToolNames entry (or vice versa) fails here.
 func TestMCPListsExpectedTools(t *testing.T) {
 	cli, _, _ := newTestClient(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -81,20 +84,16 @@ func TestMCPListsExpectedTools(t *testing.T) {
 	for _, tool := range tools.Tools {
 		have[tool.Name] = true
 	}
-	want := []string{
-		"ae_open", "ae_close", "ae_list", "ae_status", "ae_diag",
-		"ae_view", "ae_search", "ae_diff", "ae_log",
-		"ae_replace", "ae_insert", "ae_delete",
-		"ae_undo", "ae_redo", "ae_head", "ae_branches",
-		"ae_mark_add", "ae_mark_list", "ae_mark_get", "ae_mark_remove",
-		"ae_annotate_add", "ae_annotate_list", "ae_annotate_remove", "ae_annotate_search",
-		"ae_begin", "ae_commit", "ae_rollback",
-		"ae_save", "ae_load",
-		"ae_who",
-	}
-	for _, n := range want {
+	want := map[string]bool{}
+	for _, n := range mcp.ToolNames {
+		want[n] = true
 		if !have[n] {
-			t.Errorf("missing tool: %s", n)
+			t.Errorf("ToolNames lists %s but the server does not register it", n)
+		}
+	}
+	for n := range have {
+		if !want[n] {
+			t.Errorf("server registers %s but ToolNames does not list it", n)
 		}
 	}
 }

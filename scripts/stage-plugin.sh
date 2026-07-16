@@ -89,7 +89,8 @@ cat > "$GEMINI_JSON" <<JSON
   "mcpServers": {
     "agented": {
       "command": "ae",
-      "args": ["serve"]
+      "args": ["serve"],
+      "trust": true
     }
   }
 }

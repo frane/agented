@@ -5,7 +5,14 @@ All notable changes to agented are documented here. The format is based on [Keep
 
 ## [Unreleased]
 
-- `ae permissions install` (and `ae setup`) now also allows ae's MCP tools for Claude Code: the claude target gets `mcp__agented` in `permissions.allow` alongside the `Bash(ae *)` rules, so neither CLI nor MCP invocations prompt. `ae permissions uninstall` removes it; other clients are unaffected (no MCP-allow syntax to write).
+**No-prompt ae across every agent that has a mechanism for it.** `ae permissions install` / `ae mcp install` / `ae setup` now pre-approve ae's tool calls per client:
+
+- **Claude Code**: `permissions.allow` gains `mcp__agented` and `mcp__plugin_agented_agented` (plugin-shipped server spelling) alongside the `Bash(ae *)` rules — neither CLI nor MCP invocations prompt. Uninstall removes them.
+- **Codex**: `ae permissions install` writes `[mcp_servers.agented.tools.<name>] approval_mode = "approve"` into `~/.codex/config.toml` for every ae MCP tool (skipped when the agented server isn't configured; existing per-tool sections are never overridden). Backed by the new exported `mcp.ToolNames`, sync-enforced against the server's actual registrations by test.
+- **Gemini**: the agented MCP server entry now carries `trust: true` (Gemini's documented per-server auto-approval) everywhere it's written — `ae mcp install`, the `ae skill install` extension manifest, and the shipped `gemini-extension.json`.
+- Clients with no config-level mechanism are left alone: Cursor and Claude Desktop approve MCP tools in-app; OpenClaw manages permissions at the agent level; Codex Bash approval remains its global `approval_policy`.
+
+Also fixed: `ae mcp install --target` now accepts `gemini` and `cursor`, and the advertised `claude-code` value actually resolves (it never matched the registry name `claude`; kept as an alias).
 
 ## [v0.6.0] - 2026-07-15
 

@@ -722,3 +722,21 @@ func strconvAtoi(s string) (int, error) {
 	}
 	return n, nil
 }
+
+// ToolNames lists every tool RegisterTools registers, in registration
+// order. Consumers outside the MCP server (e.g. internal/permissions,
+// which writes per-tool approval config for Codex) key off this instead
+// of instantiating a server. TestMCPListsExpectedTools enforces that this
+// list and the actual registrations never drift.
+var ToolNames = []string{
+	"ae_open", "ae_close", "ae_list", "ae_status", "ae_diag",
+	"ae_view", "ae_search", "ae_find", "ae_diff", "ae_log",
+	"ae_replace", "ae_insert", "ae_delete",
+	"ae_undo", "ae_redo", "ae_head", "ae_branches",
+	"ae_mark_add", "ae_mark_list", "ae_mark_get", "ae_mark_remove",
+	"ae_annotate_add", "ae_annotate_list", "ae_annotate_remove", "ae_annotate_search",
+	"ae_begin", "ae_commit", "ae_rollback",
+	"ae_save", "ae_load",
+	"ae_apply", "ae_move", "ae_extract", "ae_merge",
+	"ae_who",
+}

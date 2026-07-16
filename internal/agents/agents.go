@@ -47,6 +47,14 @@ type Agent struct {
 	MCPApply   func(path, serverName string, server map[string]any) (changed bool, err error)
 	MCPRemove  func(path, serverName string) (changed bool, err error)
 	MCPInspect func(path, serverName string) (map[string]any, error)
+
+	// MCPServerExtras are agent-specific keys merged into the canonical
+	// server entry on install (never overriding canonical keys). Used for
+	// per-client auto-approval knobs, e.g. Gemini's `trust: true`, which
+	// skips tool-call confirmations for this server. Nil for clients with
+	// no such mechanism (Claude Code uses permission rules instead — see
+	// internal/permissions; Codex approval is a global policy).
+	MCPServerExtras map[string]any
 }
 
 // All is the source-of-truth ordered list. Order matters for summary output.
@@ -260,7 +268,14 @@ var gemini = Agent{
 		body := fmt.Sprintf(`{
   "name": "agented",
   "version": %q,
-  "contextFileName": %q
+  "contextFileName": %q,
+  "mcpServers": {
+    "agented": {
+      "command": "ae",
+      "args": ["serve"],
+      "trust": true
+    }
+  }
 }
 `, version, filepath.Base(path))
 		return os.WriteFile(manifest, []byte(body), 0o644)
@@ -278,6 +293,9 @@ var gemini = Agent{
 	MCPApply:   jsonMCPApply,
 	MCPRemove:  jsonMCPRemove,
 	MCPInspect: jsonMCPInspect,
+	// trust:true is Gemini's documented per-server auto-approval: tool
+	// calls from this server skip the confirmation prompt.
+	MCPServerExtras: map[string]any{"trust": true},
 }
 
 // openclaw — OpenClaw assistant. Skills under ~/.openclaw/workspace/skills/.

@@ -5,7 +5,8 @@
   "mcpServers": {
     "agented": {
       "command": "ae",
-      "args": ["serve"]
+      "args": ["serve"],
+      "trust": true
     }
   }
 }
