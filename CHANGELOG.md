@@ -3,6 +3,10 @@
 All notable changes to agented are documented here. The format is based on [Keep a Changelog](https://keepachangelog.com), and the project follows [Semantic Versioning](https://semver.org).
 
 
+## [Unreleased]
+
+- `ae permissions install` (and `ae setup`) now also allows ae's MCP tools for Claude Code: the claude target gets `mcp__agented` in `permissions.allow` alongside the `Bash(ae *)` rules, so neither CLI nor MCP invocations prompt. `ae permissions uninstall` removes it; other clients are unaffected (no MCP-allow syntax to write).
+
 ## [v0.6.0] - 2026-07-15
 
 Driven by the first external dogfood report (#agented, green-lynx-7cf5): one data-loss bug, one scripting hazard, one guessability nit — plus a compact edit-diff mode.

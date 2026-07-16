@@ -96,6 +96,11 @@ type Target struct {
 	GlobalPath  func() (string, error)
 	ProjectPath func(workspace string) string
 	Detect      func() (bool, string)
+	// ExtraRules are target-specific allow rules appended to the shared
+	// rule set on install/uninstall (and recognized by List). Used for
+	// rule syntaxes only one client understands, e.g. Claude Code's
+	// MCP-tool allow ("mcp__agented"). Nil for Bash-pattern-only clients.
+	ExtraRules []string
 	// Apply merges rules into the file at path; returns the rules that were
 	// newly added (i.e. weren't already present). Targets implement their
 	// own file format here so the caller doesn't care about JSON shape.
@@ -147,6 +152,10 @@ func FindTarget(name string) *Target {
 // (machine-local, gitignored); global scope writes to ~/.claude/settings.json.
 var claudeTarget = Target{
 	Name: "claude",
+	// Claude Code is the only client with an MCP-tool allow syntax: the
+	// bare server name allows every tool on ae's MCP server, so agents
+	// aren't prompted for ae_* tool calls either.
+	ExtraRules: []string{"mcp__agented"},
 	GlobalPath: func() (string, error) {
 		home, err := os.UserHomeDir()
 		if err != nil || home == "" {
@@ -902,11 +911,23 @@ func Install(opts InstallOptions) ([]Result, error) {
 	return results, nil
 }
 
+// withExtras returns the shared rules plus the target's ExtraRules.
+func withExtras(t *Target, rules []string) []string {
+	if len(t.ExtraRules) == 0 {
+		return rules
+	}
+	out := make([]string, 0, len(rules)+len(t.ExtraRules))
+	out = append(out, rules...)
+	out = append(out, t.ExtraRules...)
+	return out
+}
+
 func applyOne(t *Target, scope Scope, workspace string, rules []string, dryRun bool) Result {
 	if t.Name == "openclaw" {
 		return Result{Target: t.Name, Status: StatusSkipped,
 			Reason: "permissions are managed at the agent level by OpenClaw itself; skipping"}
 	}
+	rules = withExtras(t, rules)
 	path, err := resolvePath(t, scope, workspace)
 	if err != nil {
 		return Result{Target: t.Name, Status: StatusError, Reason: err.Error()}
@@ -1014,11 +1035,17 @@ func List(scope Scope, workspace string) []ListEntry {
 }
 
 // filterAERules returns just the rules from `existing` that match our
-// DefaultRules — used by List so we don't report unrelated user rules.
+// DefaultRules or any target's ExtraRules — used by List so we don't
+// report unrelated user rules.
 func filterAERules(existing []string) []string {
 	want := make(map[string]bool, len(DefaultRules))
 	for _, r := range DefaultRules {
 		want[r] = true
+	}
+	for i := range Targets {
+		for _, r := range Targets[i].ExtraRules {
+			want[r] = true
+		}
 	}
 	var out []string
 	for _, r := range existing {
@@ -1068,6 +1095,7 @@ func Uninstall(opts UninstallOptions) ([]Result, error) {
 }
 
 func removeOne(t *Target, scope Scope, workspace string, rules []string, dryRun bool) Result {
+	rules = withExtras(t, rules)
 	path, err := resolvePath(t, scope, workspace)
 	if err != nil {
 		return Result{Target: t.Name, Status: StatusError, Reason: err.Error()}
