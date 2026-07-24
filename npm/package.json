@@ -1,0 +1,39 @@
+{
+  "name": "agented",
+  "version": "0.0.0-dev",
+  "description": "A text editor for LLMs, not humans. Stateful CLI + MCP server with a versioned edit-history tree. This package downloads the ae binary for your platform from GitHub releases (sha256-verified, cached) — try it with `npx agented`.",
+  "bin": {
+    "agented": "bin/ae.js",
+    "ae": "bin/ae.js"
+  },
+  "files": [
+    "bin"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/frane/agented.git"
+  },
+  "homepage": "https://github.com/frane/agented#readme",
+  "bugs": {
+    "url": "https://github.com/frane/agented/issues"
+  },
+  "author": "Frane Bandov",
+  "keywords": [
+    "ai-agents",
+    "llm",
+    "mcp",
+    "mcp-server",
+    "claude",
+    "claude-code",
+    "codex",
+    "gemini",
+    "antigravity",
+    "text-editor",
+    "undo-tree",
+    "cli"
+  ]
+}

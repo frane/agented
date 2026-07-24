@@ -22,6 +22,8 @@ Also fixed: `ae mcp install --target` now accepts `gemini` and `cursor`, and the
 - Workspace rules were already compatible (Antigravity reads `AGENTS.md`/`GEMINI.md`). The legacy `gemini` target is unchanged for users still on Gemini CLI; both coexist under `~/.gemini`.
 - `ae skill install --target` validation now also accepts `gemini` and `openclaw` (they installed under `all` but were rejected as explicit targets).
 
+**`npx agented` — zero-install distribution via npm.** New [`agented` npm package](https://www.npmjs.com/package/agented): a dependency-free Node launcher that downloads the `ae` binary for the platform from the same-version GitHub release, verifies it against the release's `checksums.txt`, caches it under `~/.cache/agented/v<version>/` (override: `AGENTED_CACHE_DIR`), and passes all arguments through — `npx agented <anything>` is `ae <anything>`, and MCP clients can register `npx -y agented serve` directly. Publishing: `make publish-npm` (in `publish-all`), which refuses to stage until the tag's release assets are live so the launcher can never 404. Skill 1.5.0 documents the npx fallback; README and docs/mcp.md gained npx quickstarts.
+
 ## [v0.6.0] - 2026-07-15
 
 Driven by the first external dogfood report (#agented, green-lynx-7cf5): one data-loss bug, one scripting hazard, one guessability nit — plus a compact edit-diff mode.

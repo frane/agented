@@ -4,6 +4,7 @@
 
 <p align="center">
   <a href="https://github.com/frane/agented/releases"><img alt="release" src="https://img.shields.io/github/v/release/frane/agented?style=flat-square"></a>
+  <a href="https://www.npmjs.com/package/agented"><img alt="npm" src="https://img.shields.io/npm/v/agented?style=flat-square"></a>
   <a href="https://github.com/frane/agented/blob/master/LICENSE"><img alt="license" src="https://img.shields.io/github/license/frane/agented?style=flat-square&v=2"></a>
   <a href="https://smithery.ai/server/frane/agented"><img alt="smithery" src="https://img.shields.io/badge/smithery-MCP-purple?style=flat-square"></a>
 </p>
@@ -38,6 +39,14 @@ Take ed, the line editor that nobody has voluntarily used since about 1975, and 
 - **Cross-session memory.** Per-file notes persist between sessions and surface inline on the next open.
 - **Audit log.** Every operation recorded with actor and timestamp, so two agents in one workspace can't argue about who moved the head.
 
+## Try it in one command
+
+```sh
+npx agented setup        # wizard: skill + MCP + permissions for every detected agent
+```
+
+No install needed: the [`agented` npm package](https://www.npmjs.com/package/agented) downloads the `ae` binary for your platform from the matching GitHub release (sha256-verified), caches it, and passes every argument through — `npx agented <anything>` is `ae <anything>`. MCP clients can even run the server directly as `npx -y agented serve`.
+
 ## Install
 
 Homebrew (macOS, Linux):
@@ -45,6 +54,12 @@ Homebrew (macOS, Linux):
 ```sh
 brew tap frane/tap
 brew install agented
+```
+
+npm:
+
+```sh
+npm install -g agented   # installs the launcher; first run fetches the binary
 ```
 
 curl (any platform):

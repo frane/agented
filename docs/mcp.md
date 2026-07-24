@@ -29,6 +29,19 @@ The agent's client connects by spawning `ae serve` as a subprocess. The exact re
 
 Restart Claude Desktop. The agented tools become available in the next session.
 
+No `ae` on the machine? The npm launcher works as the command — the first call downloads and caches the platform binary (sha256-verified against the release), every later spawn is instant:
+
+```json
+{
+  "mcpServers": {
+    "agented": {
+      "command": "npx",
+      "args": ["-y", "agented", "serve"]
+    }
+  }
+}
+```
+
 For other MCP clients (Cursor, Zed, Continue, Cline, custom agents using the MCP SDK), the registration shape is the same JSON, only the file location differs. Check the client's MCP documentation for where its config lives.
 
 ## The tool surface

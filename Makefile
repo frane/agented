@@ -17,7 +17,7 @@ INSTALL_DIR ?= $(HOME)/.local/bin
 
 GO_ENV      := CGO_ENABLED=0
 
-.PHONY: build test test-short test-property bench lint release install clean fmt staticcheck stage-skill publish-skill stage-mcpb publish-smithery-skill publish-smithery-mcp stage-plugin verify-plugin-skill publish-all
+.PHONY: build test test-short test-property bench lint release install clean fmt staticcheck stage-skill publish-skill stage-mcpb publish-smithery-skill publish-smithery-mcp stage-npm publish-npm stage-plugin verify-plugin-skill publish-all
 
 build:
 	$(GO_ENV) go build -ldflags "$(LDFLAGS)" -o $(BINARY) $(PKG)
@@ -127,7 +127,18 @@ publish-smithery-mcp: stage-mcpb
 	cd $(SMITHERY_MCPB_SRC) && zip -qr $(abspath $(SMITHERY_MCPB)) .
 	smithery mcp publish $(SMITHERY_MCPB) -n $(SMITHERY_NAMESPACE)/agented
 
-publish-all: stage-plugin verify-plugin-skill publish-skill publish-smithery-skill publish-smithery-mcp
+# npm launcher package (`npx agented`). Stages dist/npm-pkg with the
+# version from the latest tag; stage-npm.sh refuses to stage until the
+# GitHub release assets for that tag are downloadable (the launcher
+# fetches binaries from the same-version release).
+stage-npm:
+	@scripts/stage-npm.sh
+
+publish-npm: stage-npm
+	@command -v npm >/dev/null 2>&1 || (echo "error: npm not on PATH" >&2 ; exit 1)
+	npm publish ./dist/npm-pkg --access public
+
+publish-all: stage-plugin verify-plugin-skill publish-skill publish-smithery-skill publish-smithery-mcp publish-npm
 	@echo
 	@echo "All catalog publishes complete."
 	@echo "GitHub release / Homebrew cask / Claude+Codex+Gemini plugins update automatically when you push the new tag."

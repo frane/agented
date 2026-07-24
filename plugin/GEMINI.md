@@ -1,6 +1,6 @@
 ---
 name: agented
-version: 1.4.0
+version: 1.5.0
 binary: ae
 description: A text editor for LLMs, not humans.
 ---
@@ -8,6 +8,8 @@ description: A text editor for LLMs, not humans.
 # agented (binary: `ae`)
 
 `ae` is a stateful editor controlled by command-line verbs. State persists across sessions in a SQLite-backed workspace (`.agented/state.db`). Every edit is versioned in an undo tree — you can branch, jump to any past state, and never lose work.
+
+**`ae` not on PATH?** `npx -y agented <verb> ...` runs the identical binary — the npm launcher downloads the platform build from GitHub releases on first use (sha256-verified) and caches it, so later calls are instant and offline. Every command in this document works verbatim with `npx -y agented` in place of `ae`. Prefer a real install for daily use (`brew install frane/tap/agented` or `npm i -g agented`).
 
 ## Use this tool when
 
