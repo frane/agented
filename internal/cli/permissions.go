@@ -10,7 +10,7 @@ import (
 	"github.com/frane/agented/internal/permissions"
 )
 
-var validPermTargets = []string{"all", "claude", "gemini", "codex"}
+var validPermTargets = []string{"all", "antigravity", "claude", "gemini", "codex"}
 
 func newPermissionsCmd(a *App) *cobra.Command {
 	c := &cobra.Command{

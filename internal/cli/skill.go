@@ -14,8 +14,9 @@ import (
 	"github.com/frane/agented/internal/workspace"
 )
 
-// validTargets are the values accepted by --target.
-var validTargets = []string{"all", "agents", "claude", "codex", "cursor"}
+// validTargets are the values accepted by --target. Matches the agents in
+// the internal/agents registry that expose a skill surface.
+var validTargets = []string{"all", "agents", "antigravity", "claude", "codex", "cursor", "gemini", "openclaw"}
 
 // validScopes are the values accepted by --scope.
 var validScopes = []string{"global", "project"}

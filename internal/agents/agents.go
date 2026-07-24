@@ -66,6 +66,7 @@ var All = []Agent{
 	codex,
 	cursor,
 	gemini,
+	antigravity,
 	openclaw,
 }
 
@@ -318,6 +319,55 @@ var openclaw = Agent{
 		}
 		return filepath.Join(home, ".openclaw", "workspace", "skills", "agented", "SKILL.md"), nil
 	},
+}
+
+// antigravity — Google Antigravity (the 2.0 IDE + `agy` CLI), successor to
+// Gemini CLI. All Antigravity surfaces share config under ~/.gemini:
+//   - skills:  ~/.gemini/skills/<name>/SKILL.md (same SKILL.md convention
+//     agented already ships; workspace scope is .agents/skills/, which the
+//     canonical "agents" target covers)
+//   - MCP:     ~/.gemini/config/mcp_config.json (workspace:
+//     .agents/mcp_config.json), plain mcpServers JSON — no per-server
+//     trust flag; auto-approval is the permissions system's
+//     mcp(agented/*) allow pattern (see internal/permissions)
+//
+// The legacy gemini target keeps writing ~/.gemini/settings.json and the
+// extension manifest for users still on Gemini CLI; both can coexist.
+var antigravity = Agent{
+	Name: "antigravity",
+	Detect: func() (bool, string) {
+		if pathIsDir(homeSubdir(filepath.Join(".gemini", "config"))) ||
+			pathIsDir(homeSubdir(filepath.Join(".gemini", "antigravity-cli"))) ||
+			pathIsDir(homeSubdir(filepath.Join(".gemini", "antigravity"))) {
+			return true, ""
+		}
+		if _, err := exec.LookPath("agy"); err == nil {
+			return true, ""
+		}
+		return false, "no install detected"
+	},
+	SkillGlobal: func() (string, error) {
+		home, err := os.UserHomeDir()
+		if err != nil || home == "" {
+			return "", fmt.Errorf("antigravity: no home directory")
+		}
+		return filepath.Join(home, ".gemini", "skills", "agented", "SKILL.md"), nil
+	},
+	// Workspace-scope skills intentionally nil: Antigravity reads
+	// .agents/skills/, which the canonical "agents" target already writes.
+	MCPGlobal: func() (string, error) {
+		home, err := os.UserHomeDir()
+		if err != nil || home == "" {
+			return "", fmt.Errorf("antigravity: no home directory")
+		}
+		return filepath.Join(home, ".gemini", "config", "mcp_config.json"), nil
+	},
+	MCPProject: func(workspace string) string {
+		return filepath.Join(workspace, ".agents", "mcp_config.json")
+	},
+	MCPApply:   jsonMCPApply,
+	MCPRemove:  jsonMCPRemove,
+	MCPInspect: jsonMCPInspect,
 }
 
 // claudeDesktopConfigPath returns the per-OS config location for Claude Desktop.

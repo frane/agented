@@ -14,6 +14,14 @@ All notable changes to agented are documented here. The format is based on [Keep
 
 Also fixed: `ae mcp install --target` now accepts `gemini` and `cursor`, and the advertised `claude-code` value actually resolves (it never matched the registry name `claude`; kept as an alias).
 
+**Google Antigravity support** (the Gemini CLI successor — IDE + `agy` CLI). New `antigravity` target across all three install surfaces, wired through the shared agents registry:
+
+- `ae skill install -t antigravity` → `~/.gemini/skills/agented/SKILL.md` (Antigravity's shared skills dir; same SKILL.md convention). Workspace-scope skills already worked: Antigravity reads `.agents/skills/`, which the canonical `agents` target writes.
+- `ae mcp install -t antigravity` → agented server in `~/.gemini/config/mcp_config.json` (shared by IDE, CLI, and SDK; workspace scope: `.agents/mcp_config.json`).
+- `ae permissions install -t antigravity` → `command(ae)` + `mcp(agented/*)` in the permissions allow list at `~/.gemini/antigravity-cli/settings.json`, so neither shell nor MCP invocations prompt (Antigravity has no per-server trust flag; its Deny/Ask/Allow pattern system is the mechanism).
+- Workspace rules were already compatible (Antigravity reads `AGENTS.md`/`GEMINI.md`). The legacy `gemini` target is unchanged for users still on Gemini CLI; both coexist under `~/.gemini`.
+- `ae skill install --target` validation now also accepts `gemini` and `openclaw` (they installed under `all` but were rejected as explicit targets).
+
 ## [v0.6.0] - 2026-07-15
 
 Driven by the first external dogfood report (#agented, green-lynx-7cf5): one data-loss bug, one scripting hazard, one guessability nit — plus a compact edit-diff mode.

@@ -137,6 +137,7 @@ var Targets = []Target{
 	codexTarget,
 	geminiTarget,
 	openclawTarget,
+	antigravityTarget,
 }
 
 // FindTarget returns the Target with the given name, or nil if unknown.
@@ -149,6 +150,75 @@ func FindTarget(name string) *Target {
 	return nil
 }
 
+// jsonAllowApply merges rules into the permissions.allow string array of a
+// JSON settings file, creating the file/keys as needed. Returns the rules
+// newly added. Shared by the claude and antigravity targets — both use the
+// same {"permissions": {"allow": [...]}} shape, just different rule syntax.
+func jsonAllowApply(path string, rules []string) ([]string, error) {
+	root, err := readJSONObject(path)
+	if err != nil {
+		return nil, err
+	}
+	perms, _ := root["permissions"].(map[string]any)
+	if perms == nil {
+		perms = map[string]any{}
+	}
+	existing := stringArray(perms["allow"])
+	set := make(map[string]bool, len(existing))
+	for _, r := range existing {
+		set[r] = true
+	}
+	var added []string
+	for _, r := range rules {
+		if !set[r] {
+			existing = append(existing, r)
+			set[r] = true
+			added = append(added, r)
+		}
+	}
+	sort.Strings(existing)
+	perms["allow"] = anyArray(existing)
+	root["permissions"] = perms
+	if err := writeJSONObject(path, root); err != nil {
+		return nil, err
+	}
+	return added, nil
+}
+
+// jsonAllowRemove strips rules from permissions.allow. Idempotent: a missing
+// file or absent rule is a no-op.
+func jsonAllowRemove(path string, rules []string) ([]string, error) {
+	root, err := readJSONObject(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	perms, _ := root["permissions"].(map[string]any)
+	if perms == nil {
+		return nil, nil
+	}
+	existing := stringArray(perms["allow"])
+	toRemove := make(map[string]bool, len(rules))
+	for _, r := range rules {
+		toRemove[r] = true
+	}
+	var kept, removed []string
+	for _, r := range existing {
+		if toRemove[r] {
+			removed = append(removed, r)
+			continue
+		}
+		kept = append(kept, r)
+	}
+	perms["allow"] = anyArray(kept)
+	root["permissions"] = perms
+	if err := writeJSONObject(path, root); err != nil {
+		return nil, err
+	}
+	return removed, nil
+}
 // claudeTarget — Claude Code uses a JSON schema with `permissions.allow` as
 // a string array. Project scope writes to .claude/settings.local.json
 // (machine-local, gitignored); global scope writes to ~/.claude/settings.json.
@@ -182,68 +252,8 @@ var claudeTarget = Target{
 		}
 		return false, "no install detected"
 	},
-	Apply: func(path string, rules []string) ([]string, error) {
-		root, err := readJSONObject(path)
-		if err != nil {
-			return nil, err
-		}
-		perms, _ := root["permissions"].(map[string]any)
-		if perms == nil {
-			perms = map[string]any{}
-		}
-		existing := stringArray(perms["allow"])
-		set := make(map[string]bool, len(existing))
-		for _, r := range existing {
-			set[r] = true
-		}
-		var added []string
-		for _, r := range rules {
-			if !set[r] {
-				existing = append(existing, r)
-				set[r] = true
-				added = append(added, r)
-			}
-		}
-		sort.Strings(existing)
-		perms["allow"] = anyArray(existing)
-		root["permissions"] = perms
-		if err := writeJSONObject(path, root); err != nil {
-			return nil, err
-		}
-		return added, nil
-	},
-	Remove: func(path string, rules []string) ([]string, error) {
-		root, err := readJSONObject(path)
-		if err != nil {
-			if os.IsNotExist(err) {
-				return nil, nil
-			}
-			return nil, err
-		}
-		perms, _ := root["permissions"].(map[string]any)
-		if perms == nil {
-			return nil, nil
-		}
-		existing := stringArray(perms["allow"])
-		toRemove := make(map[string]bool, len(rules))
-		for _, r := range rules {
-			toRemove[r] = true
-		}
-		var kept, removed []string
-		for _, r := range existing {
-			if toRemove[r] {
-				removed = append(removed, r)
-				continue
-			}
-			kept = append(kept, r)
-		}
-		perms["allow"] = anyArray(kept)
-		root["permissions"] = perms
-		if err := writeJSONObject(path, root); err != nil {
-			return nil, err
-		}
-		return removed, nil
-	},
+	Apply:  jsonAllowApply,
+	Remove: jsonAllowRemove,
 	// Claude reuses the same JSON shape for permissions.deny, just under a
 	// different key. Same merge-and-sort logic; the deny entries (`Read`,
 	// `Edit`, `Write`, etc.) live alongside the allow entries Claude already
@@ -407,6 +417,61 @@ var openclawTarget = Target{
 	},
 	Remove: func(path string, rules []string) ([]string, error) {
 		return nil, nil
+	},
+}
+
+// antigravityAllowRules are Antigravity's native action(target) allow
+// patterns for ae: command(ae) lets every `ae ...` invocation through
+// (each whitespace token is an anchored regex, so the prefix covers all
+// subcommands), and mcp(agented/*) auto-approves every tool on ae's MCP
+// server. Written verbatim into permissions.allow.
+var antigravityAllowRules = []string{
+	"command(ae)",
+	"mcp(agented/*)",
+}
+
+// antigravityTarget — Google Antigravity (IDE + agy CLI). Permissions are
+// Deny/Ask/Allow lists of action(target) patterns in the JSON settings at
+// ~/.gemini/antigravity-cli/settings.json — the same
+// {"permissions": {"allow": [...]}} shape Claude Code uses, so the JSON
+// merge helpers are shared. The generic Bash(ae *) rules don't apply;
+// Apply writes the native patterns instead.
+var antigravityTarget = Target{
+	Name: "antigravity",
+	// ExtraRules carries the native patterns so List recognizes them as
+	// ours; Apply ignores the shared rule set entirely.
+	ExtraRules: antigravityAllowRules,
+	GlobalPath: func() (string, error) {
+		home, err := os.UserHomeDir()
+		if err != nil || home == "" {
+			return "", fmt.Errorf("antigravity: no home directory")
+		}
+		return filepath.Join(home, ".gemini", "antigravity-cli", "settings.json"), nil
+	},
+	ProjectPath: func(workspace string) string {
+		return ""
+	},
+	Detect: func() (bool, string) {
+		home, _ := os.UserHomeDir()
+		if home != "" {
+			for _, d := range []string{"config", "antigravity-cli", "antigravity"} {
+				if fi, err := os.Stat(filepath.Join(home, ".gemini", d)); err == nil && fi.IsDir() {
+					return true, ""
+				}
+			}
+		}
+		if _, err := exec.LookPath("agy"); err == nil {
+			return true, ""
+		}
+		return false, "no install detected"
+	},
+	Apply: func(path string, rules []string) ([]string, error) {
+		_ = rules // Bash-pattern rules don't apply; write native patterns
+		return jsonAllowApply(path, antigravityAllowRules)
+	},
+	Remove: func(path string, rules []string) ([]string, error) {
+		_ = rules
+		return jsonAllowRemove(path, antigravityAllowRules)
 	},
 }
 

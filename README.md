@@ -76,13 +76,21 @@ gemini extensions install https://github.com/frane/agented
 
 The Gemini gallery (https://geminicli.com/extensions/) crawls daily and indexes via the `gemini-cli-extension` topic on this repo.
 
+**Google Antigravity** (IDE + `agy` CLI, Gemini CLI's successor): no extension needed —
+
+```sh
+ae skill install -t antigravity && ae mcp install -t antigravity && ae permissions install -t antigravity
+```
+
+installs the skill to `~/.gemini/skills/agented/`, registers the MCP server in `~/.gemini/config/mcp_config.json`, and adds `command(ae)` + `mcp(agented/*)` to the permissions allow list so nothing prompts. (`ae setup` covers all three when Antigravity is detected.)
+
 ## Getting started
 
 ```sh
 ae skill install
 ```
 
-That writes a `SKILL.md` into every detected agent's skills directory: Claude, Codex, Cursor, Gemini, OpenClaw, and the canonical `~/.agents/`. The skill teaches the agent how to drive ae.
+That writes a `SKILL.md` into every detected agent's skills directory: Claude, Codex, Cursor, Gemini, Antigravity, OpenClaw, and the canonical `~/.agents/`. The skill teaches the agent how to drive ae.
 
 You still need to tell the agent to use it. Even with the skill installed, agents fall back to built-in Read and Edit out of habit, so something like "use ae for all file edits" in your system prompt or your first message is what keeps them on it.
 

@@ -46,7 +46,7 @@ func newSetupCmd(a *App) *cobra.Command {
 		},
 	}
 	c.AddCommand(newSetupShowCmd(a))
-	c.Flags().StringVarP(&target, "target", "t", "all", "Target: all | claude | codex | cursor | agents")
+	c.Flags().StringVarP(&target, "target", "t", "all", "Target: all | agents | antigravity | claude | codex | cursor | gemini | openclaw")
 	c.Flags().StringVarP(&scope, "scope", "s", "smart", "Scope: smart | global | project")
 	c.Flags().StringVar(&scopeSkill, "scope-skill", "", "Scope override for skill (defaults from --scope)")
 	c.Flags().StringVar(&scopeRules, "scope-rules", "", "Scope override for rules")
