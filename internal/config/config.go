@@ -18,18 +18,18 @@ var defaultsJSON []byte
 
 // Config is the resolved configuration used by the binary at runtime.
 type Config struct {
-	Actor       string         `json:"actor"`
-	Concurrency Concurrency    `json:"concurrency"`
+	Actor        string          `json:"actor"`
+	Concurrency  Concurrency     `json:"concurrency"`
 	Transactions TransactionsCfg `json:"transactions"`
-	Stale       StaleCfg       `json:"stale"`
-	AutoPrune   AutoPruneCfg   `json:"auto_prune"`
-	Audit       AuditCfg       `json:"audit"`
-	Output      OutputCfg      `json:"output"`
-	Skill       SkillCfg       `json:"skill"`
-	MCP         MCPCfg         `json:"mcp"`
-	Logging     LoggingCfg     `json:"logging"`
-	Workspace   WorkspaceCfg   `json:"workspace"`
-	IDE         IDECfg         `json:"ide"`
+	Stale        StaleCfg        `json:"stale"`
+	AutoPrune    AutoPruneCfg    `json:"auto_prune"`
+	Audit        AuditCfg        `json:"audit"`
+	Output       OutputCfg       `json:"output"`
+	Skill        SkillCfg        `json:"skill"`
+	MCP          MCPCfg          `json:"mcp"`
+	Logging      LoggingCfg      `json:"logging"`
+	Workspace    WorkspaceCfg    `json:"workspace"`
+	IDE          IDECfg          `json:"ide"`
 }
 
 // WorkspaceCfg controls workspace discovery (used by Locate).
@@ -48,11 +48,11 @@ type WorkspaceCfg struct {
 // symbol/reference/definition queries via a Unix socket. Mutating verbs
 // pick up the cached diagnostics and emit them as `diag` lines.
 type IDECfg struct {
-	Enabled          bool                       `json:"enabled"`
-	AutoStartDaemon  bool                       `json:"auto_start_daemon"`
-	Languages        map[string]IDELanguageCfg  `json:"languages"`
-	Extensions       map[string]string          `json:"extensions"`
-	Diagnostics      IDEDiagnosticsCfg          `json:"diagnostics"`
+	Enabled         bool                      `json:"enabled"`
+	AutoStartDaemon bool                      `json:"auto_start_daemon"`
+	Languages       map[string]IDELanguageCfg `json:"languages"`
+	Extensions      map[string]string         `json:"extensions"`
+	Diagnostics     IDEDiagnosticsCfg         `json:"diagnostics"`
 }
 
 // IDELanguageCfg configures one language: which servers to spawn, plus
@@ -111,9 +111,9 @@ type IDEDiagnosticsCfg struct {
 }
 
 type Concurrency struct {
-	RequireExpect string `json:"require_expect"` // writes | warn | off
-	AutoSave         string `json:"auto_save"`           // clean | off | force (default clean)
-	AutoLoadOnDrift  bool   `json:"auto_load_on_drift"` // when true, sniff disk before each write and load divergent content into a new edit
+	RequireExpect   string `json:"require_expect"`     // writes | warn | off
+	AutoSave        string `json:"auto_save"`          // clean | off | force (default clean)
+	AutoLoadOnDrift bool   `json:"auto_load_on_drift"` // when true, sniff disk before each write and load divergent content into a new edit
 	// ReadDrift controls what a content read (view/search/diff/find) does when
 	// disk has moved past the workspace head: reconcile (fold disk in and
 	// answer from it), warn (answer from head, flag it stale, exit 3), or
@@ -131,10 +131,10 @@ type StaleCfg struct {
 }
 
 type AutoPruneCfg struct {
-	Enabled  bool             `json:"enabled"`
-	OnClose  bool             `json:"on_close"`
-	OnOpen   bool             `json:"on_open"`
-	Schedule string           `json:"schedule"` // daily | hourly | off
+	Enabled  bool              `json:"enabled"`
+	OnClose  bool              `json:"on_close"`
+	OnOpen   bool              `json:"on_open"`
+	Schedule string            `json:"schedule"` // daily | hourly | off
 	Policies AutoPrunePolicies `json:"policies"`
 }
 
@@ -150,11 +150,11 @@ type AuditCfg struct {
 }
 
 type OutputCfg struct {
-	DefaultFormat     string `json:"default_format"`     // tab | json
+	DefaultFormat     string `json:"default_format"` // tab | json
 	IncludeStateToken bool   `json:"include_state_token"`
-	SyntaxHighlight   bool   `json:"syntax_highlight"`   // when true, color tokens by language (chroma)
-	NudgeOnPipe       bool   `json:"nudge_on_pipe"`     // when true, read verbs print a stderr nudge when stdout is piped without a --limit/-L or --range bound
-	EditDiff          string `json:"edit_diff"`         // off | tty | always — attach a compact delta to write-verb responses (tty: CLI terminal output only)
+	SyntaxHighlight   bool   `json:"syntax_highlight"` // when true, color tokens by language (chroma)
+	NudgeOnPipe       bool   `json:"nudge_on_pipe"`    // when true, read verbs print a stderr nudge when stdout is piped without a --limit/-L or --range bound
+	EditDiff          string `json:"edit_diff"`        // off | tty | always — attach a compact delta to write-verb responses (tty: CLI terminal output only)
 }
 
 type SkillCfg struct {
@@ -299,4 +299,3 @@ func deleteDotted(m map[string]any, parts []string) {
 		deleteDotted(next, parts[1:])
 	}
 }
-

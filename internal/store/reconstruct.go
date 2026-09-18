@@ -35,13 +35,13 @@ func (s *Store) Reconstruct(editID int64) (string, error) {
 // reconstructLocked is the implementation; expects an open *sql.Tx.
 func (s *Store) reconstructLocked(tx *sql.Tx, editID int64) (string, error) {
 	type row struct {
-		id           int64
-		parent       sql.NullInt64
-		snapshotID   sql.NullInt64
-		rangeStart   int
-		rangeEnd     int
-		afterBlob    []byte
-		contentHash  string
+		id          int64
+		parent      sql.NullInt64
+		snapshotID  sql.NullInt64
+		rangeStart  int
+		rangeEnd    int
+		afterBlob   []byte
+		contentHash string
 	}
 	loadRow := func(id int64) (*row, error) {
 		r := &row{}

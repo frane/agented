@@ -29,9 +29,9 @@ func New(db *sql.DB) *Store {
 	debug := strings.EqualFold(strings.TrimSpace(os.Getenv("AE_DEBUG")), "1") ||
 		strings.EqualFold(strings.TrimSpace(os.Getenv("AE_DEBUG")), "true")
 	return &Store{
-		db:    db,
-		now:   func() time.Time { return time.Now().UTC() },
-		blob:  blob.Default(),
+		db:   db,
+		now:  func() time.Time { return time.Now().UTC() },
+		blob: blob.Default(),
 		snapPolicy: snapshotPolicy{
 			interval:   defaultSnapshotInterval,
 			deltaRatio: defaultSnapshotDeltaRatio,

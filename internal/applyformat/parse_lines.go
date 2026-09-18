@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 )
+
 func parseLines(input []byte, defaultFile string, long bool) ([]Operation, error) {
 	lines := splitLines(input)
 	var ops []Operation

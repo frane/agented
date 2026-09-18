@@ -11,15 +11,15 @@ import (
 type PruneOptions struct {
 	ClosedFilesOlderThan time.Duration // 0 disables this rule
 	DeadBranchesIdleFor  time.Duration // 0 disables; branches older than this and not on head's path are pruned
-	KeepRecentPerBranch  int            // 0 disables history collapse
-	OrphanMarks          bool           // remove marks pointing at pruned edits
-	FileID               *int64         // if set, scope to one file
+	KeepRecentPerBranch  int           // 0 disables history collapse
+	OrphanMarks          bool          // remove marks pointing at pruned edits
+	FileID               *int64        // if set, scope to one file
 	DryRun               bool
 }
 
 // PruneReport summarizes a prune run.
 type PruneReport struct {
-	DryRun           bool
+	DryRun            bool
 	FilesClosedPruned int
 	BranchesPruned    int
 	EditsCollapsed    int
@@ -79,7 +79,10 @@ func (s *Store) pruneClosedFiles(tx *sql.Tx, opts PruneOptions, report *PruneRep
 	if err != nil {
 		return err
 	}
-	type item struct{ id int64; path string }
+	type item struct {
+		id   int64
+		path string
+	}
 	var items []item
 	for rows.Next() {
 		var it item
@@ -389,22 +392,22 @@ func (s *Store) Vacuum() error {
 
 // StorageReport summarizes workspace storage.
 type StorageReport struct {
-	DBBytes        int64
-	EditCount      int64
-	BranchCount    int64
+	DBBytes         int64
+	EditCount       int64
+	BranchCount     int64
 	AnnotationCount int64
-	AuditCount     int64
-	StaleBuffers   int
-	StaleBranches  int
-	LastAutoPrune  *time.Time
-	PerFile        []FileStorage
+	AuditCount      int64
+	StaleBuffers    int
+	StaleBranches   int
+	LastAutoPrune   *time.Time
+	PerFile         []FileStorage
 }
 
 // FileStorage is per-file storage stats.
 type FileStorage struct {
-	FileID    int64
-	Path      string
-	EditCount int64
+	FileID      int64
+	Path        string
+	EditCount   int64
 	BranchCount int64
 }
 

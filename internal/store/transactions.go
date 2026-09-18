@@ -87,7 +87,7 @@ func (s *Store) CurrentTransaction(actor string) (*Transaction, error) {
 		}
 		out := &Transaction{
 			ID: id, Actor: a, State: "open",
-			StartedAt: FromEpochMs(startedAt),
+			StartedAt:      FromEpochMs(startedAt),
 			LastActivityAt: FromEpochMs(lastAct),
 		}
 		if scope.Valid {
@@ -267,7 +267,7 @@ func (s *Store) openTxOwnedBy(tx *sql.Tx, actor string) (*Transaction, error) {
 	}
 	out := &Transaction{
 		ID: id, Actor: a, State: "open",
-		StartedAt: FromEpochMs(startedAt),
+		StartedAt:      FromEpochMs(startedAt),
 		LastActivityAt: FromEpochMs(lastAct),
 	}
 	if scope.Valid {

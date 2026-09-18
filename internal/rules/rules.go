@@ -94,7 +94,7 @@ func FindTarget(name string) *Target {
 }
 
 var claudeTarget = Target{
-	Name: "claude",
+	Name:        "claude",
 	ProjectPath: func(ws string) string { return filepath.Join(ws, "CLAUDE.md") },
 	GlobalPath: func() (string, error) {
 		home, err := os.UserHomeDir()
@@ -107,7 +107,7 @@ var claudeTarget = Target{
 }
 
 var codexTarget = Target{
-	Name: "codex",
+	Name:        "codex",
 	ProjectPath: func(ws string) string { return filepath.Join(ws, "AGENTS.md") },
 	GlobalPath: func() (string, error) {
 		home, err := os.UserHomeDir()
@@ -137,7 +137,7 @@ var cursorTarget = Target{
 }
 
 var agentsTarget = Target{
-	Name: "agents",
+	Name:        "agents",
 	ProjectPath: func(ws string) string { return filepath.Join(ws, "AGENTS.md") },
 	GlobalPath:  nil,
 	Detect:      func() (bool, string) { return false, "agents target is project-only by spec" },
@@ -302,12 +302,12 @@ func bytesTrim(b []byte) string {
 
 // ListEntry describes one row of `ae rules list`.
 type ListEntry struct {
-	Target          string
-	Detected        string
-	ProjectPath     string
-	GlobalPath      string
-	ProjectVersion  string
-	GlobalVersion   string
+	Target         string
+	Detected       string
+	ProjectPath    string
+	GlobalPath     string
+	ProjectVersion string
+	GlobalVersion  string
 }
 
 // List returns the install state across all targets and scopes.

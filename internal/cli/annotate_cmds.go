@@ -137,4 +137,3 @@ func runAnnotSearch(a *App, query string) error {
 	a.auditOK("annotate.search", map[string]any{"query": query}, nil, nil)
 	return a.emit(res)
 }
-

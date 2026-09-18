@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
-)// parseJSON handles the existing JSON-lines format.
+) // parseJSON handles the existing JSON-lines format.
 func parseJSON(input []byte, defaultFile string) ([]Operation, error) {
 	var ops []Operation
 	sc := bufio.NewScanner(bytes.NewReader(input))

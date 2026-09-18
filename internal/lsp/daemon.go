@@ -37,8 +37,8 @@ type Daemon struct {
 }
 
 type languageClient struct {
-	language string  // "go", "typescript", ...
-	name     string  // server name within the language ("gopls", "eslint", ...)
+	language string // "go", "typescript", ...
+	name     string // server name within the language ("gopls", "eslint", ...)
 	cfg      config.IDEServerCfg
 	client   *Client
 }
@@ -567,7 +567,7 @@ func classifyUsage(name, ctxLine string) string {
 	switch {
 	case strings.HasPrefix(t, "import ") || strings.Contains(t, `"`+name+`"`):
 		return "import"
-	case strings.Contains(t, name+"(") :
+	case strings.Contains(t, name+"("):
 		return "call"
 	case strings.Contains(t, name+" =") || strings.Contains(t, name+":="):
 		return "write"

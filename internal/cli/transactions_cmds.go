@@ -64,4 +64,3 @@ func newRollbackCmd(a *App) *cobra.Command {
 	}
 	return c
 }
-

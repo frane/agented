@@ -122,8 +122,8 @@ func FindTarget(name string) *Target {
 type InstallOptions struct {
 	Selected  string // "all" or a target name; empty means "all"
 	Scope     Scope
-	Workspace string // required for ScopeProject
-	Command   string // path to ae binary; defaults to "ae"
+	Workspace string   // required for ScopeProject
+	Command   string   // path to ae binary; defaults to "ae"
 	Args      []string // server args; defaults to ["serve"]
 	DryRun    bool
 }

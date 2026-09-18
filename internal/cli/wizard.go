@@ -15,14 +15,14 @@ import (
 // is installed on this machine, gathered by querying each install package's
 // detection function for the matching target name.
 type agentPresence struct {
-	Name      string
-	Skill     bool   // skill target detected
-	Rules     bool   // rules target detected
-	Perms     bool   // permissions target detected
-	MCP       bool   // mcp install target detected (claude-code/desktop/codex)
-	MCPName   string // the mcpinstall target name(s) for this agent
-	Detected  bool   // any of the above detected
-	SkipNote  string // human-readable note when a component is intentionally skipped (e.g. openclaw)
+	Name     string
+	Skill    bool   // skill target detected
+	Rules    bool   // rules target detected
+	Perms    bool   // permissions target detected
+	MCP      bool   // mcp install target detected (claude-code/desktop/codex)
+	MCPName  string // the mcpinstall target name(s) for this agent
+	Detected bool   // any of the above detected
+	SkipNote string // human-readable note when a component is intentionally skipped (e.g. openclaw)
 }
 
 // detectAgents returns the presence summary for each known agent. Used by

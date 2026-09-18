@@ -18,9 +18,9 @@ func (s *Store) MergeCommit(actor string, fileID, parentHead, secondParent int64
 	lc := countLines(mergedContent)
 	now := s.nowMs()
 	args, _ := json.Marshal(map[string]any{
-		"merge_parent":    parentHead,
-		"merge_second":    secondParent,
-		"merged_lines":    lc,
+		"merge_parent": parentHead,
+		"merge_second": secondParent,
+		"merged_lines": lc,
 	})
 	emptyBlob, _ := s.blob.Encode(nil)
 	afterBlob, err := s.blob.Encode([]byte(mergedContent))

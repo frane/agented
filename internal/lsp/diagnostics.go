@@ -19,17 +19,17 @@ const (
 
 // Diagnostic mirrors a row in the diagnostics table.
 type Diagnostic struct {
-	ID        int64
-	FileID    int64
-	EditID    *int64
-	Severity  Severity
-	Line      int
-	Col       int
-	EndLine   *int
-	EndCol    *int
-	Message   string
-	Source    string
-	RuleID    string
+	ID           int64
+	FileID       int64
+	EditID       *int64
+	Severity     Severity
+	Line         int
+	Col          int
+	EndLine      *int
+	EndCol       *int
+	Message      string
+	Source       string
+	RuleID       string
 	CreatedAt    int64
 	SourceServer string // The LSP server name that published this diagnostic.
 	Path         string `json:",omitempty"` // Resolved file path; filled at query/emit time, never stored.

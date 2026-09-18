@@ -87,13 +87,13 @@ func acceptLoop(ctx context.Context, ln net.Listener, srv *mserver.MCPServer) er
 }
 
 // poolHandler builds a tool handler that:
-//   1. Parses MCP args into a typed Req via `bind`. The binder also returns
-//      the path used for workspace resolution (empty string => fall back to
-//      pool's default workspace).
-//   2. Resolves the Engine via the Pool.
-//   3. Invokes the Engine method on the typed Req.
-//   4. Posts an LSP "file changed" notification when ide.enabled is true on
-//      the resolved engine (lazy daemon-spawn handled inside the lsp pkg).
+//  1. Parses MCP args into a typed Req via `bind`. The binder also returns
+//     the path used for workspace resolution (empty string => fall back to
+//     pool's default workspace).
+//  2. Resolves the Engine via the Pool.
+//  3. Invokes the Engine method on the typed Req.
+//  4. Posts an LSP "file changed" notification when ide.enabled is true on
+//     the resolved engine (lazy daemon-spawn handled inside the lsp pkg).
 //
 // All MCP tools route through this so a single `ae serve` process can serve
 // any number of workspaces, picking the right one per call from the path arg.

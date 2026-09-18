@@ -104,8 +104,8 @@ func TestHeuristicSkipsInsideSection(t *testing.T) {
 func TestVersionFromBegin(t *testing.T) {
 	cases := map[string]string{
 		"<!-- BEGIN agented section v0.1.0 -->": "v0.1.0",
-		"BEGIN v1.2.3 marker":                    "v1.2.3",
-		"no version here":                        "",
+		"BEGIN v1.2.3 marker":                   "v1.2.3",
+		"no version here":                       "",
 	}
 	for in, want := range cases {
 		got := markersection.VersionFromBegin(in)

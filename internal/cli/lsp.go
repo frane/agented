@@ -116,7 +116,7 @@ func newLSPStopCmd(a *App) *cobra.Command {
 			if err != nil || pid <= 0 {
 				return wrapErrCode(1, errors.New("invalid pid file"))
 			}
-		proc, err := os.FindProcess(pid)
+			proc, err := os.FindProcess(pid)
 			if err != nil {
 				return wrapErr(err)
 			}

@@ -32,17 +32,17 @@ func TestDefaultsValidate(t *testing.T) {
 
 func TestParseDurationDays(t *testing.T) {
 	cases := map[string]time.Duration{
-		"1d":     24 * time.Hour,
-		"7d":     7 * 24 * time.Hour,
-		"30d":    30 * 24 * time.Hour,
-		"1y":     365 * 24 * time.Hour,
-		"10m":    10 * time.Minute,
-		"15m":    15 * time.Minute,
-		"24h":    24 * time.Hour,
-		"1h30m":  90 * time.Minute,
-		"1y2d":   (365 + 2) * 24 * time.Hour,
-		"500ms":  500 * time.Millisecond,
-		"1s":     time.Second,
+		"1d":    24 * time.Hour,
+		"7d":    7 * 24 * time.Hour,
+		"30d":   30 * 24 * time.Hour,
+		"1y":    365 * 24 * time.Hour,
+		"10m":   10 * time.Minute,
+		"15m":   15 * time.Minute,
+		"24h":   24 * time.Hour,
+		"1h30m": 90 * time.Minute,
+		"1y2d":  (365 + 2) * 24 * time.Hour,
+		"500ms": 500 * time.Millisecond,
+		"1s":    time.Second,
 	}
 	for in, want := range cases {
 		got, err := config.ParseDuration(in)
@@ -186,10 +186,10 @@ func TestFlattenLeaves(t *testing.T) {
 
 func TestFormatDuration(t *testing.T) {
 	cases := map[time.Duration]string{
-		24 * time.Hour:        "1d",
-		7 * 24 * time.Hour:    "7d",
-		365 * 24 * time.Hour:  "1y",
-		90 * time.Minute:      "1h30m0s",
+		24 * time.Hour:       "1d",
+		7 * 24 * time.Hour:   "7d",
+		365 * 24 * time.Hour: "1y",
+		90 * time.Minute:     "1h30m0s",
 	}
 	for in, want := range cases {
 		if got := config.FormatDuration(in); got != want {

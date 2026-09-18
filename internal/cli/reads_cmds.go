@@ -54,7 +54,6 @@ func newFindCmd(a *App) *cobra.Command {
 	return c
 }
 
-
 func newViewCmd(a *App) *cobra.Command {
 	var (
 		rangeStr string

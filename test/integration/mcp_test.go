@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	mcpgo "github.com/mark3labs/mcp-go/mcp"
 	mclient "github.com/mark3labs/mcp-go/client"
 	mctrans "github.com/mark3labs/mcp-go/client/transport"
+	mcpgo "github.com/mark3labs/mcp-go/mcp"
 )
 
 // TestScenario12_MCPParity exercises a few representative tools over MCP and

@@ -1,4 +1,3 @@
-
 // Package permissions installs / lists / uninstalls allow-rules for ae in
 // each supported client's permissions config (Claude Code today; Codex when
 // its config schema is documented). Mirrors the Target-driven design used
@@ -219,6 +218,7 @@ func jsonAllowRemove(path string, rules []string) ([]string, error) {
 	}
 	return removed, nil
 }
+
 // claudeTarget — Claude Code uses a JSON schema with `permissions.allow` as
 // a string array. Project scope writes to .claude/settings.local.json
 // (machine-local, gitignored); global scope writes to ~/.claude/settings.json.
@@ -953,7 +953,6 @@ func buildGeminiDenyTOML(tools []string) string {
 	}
 	return sb.String()
 }
-
 
 // readJSONObject reads a JSON object from path. Returns an empty map (no
 // error) if the file is absent. Errors only on IO/parse failure when the

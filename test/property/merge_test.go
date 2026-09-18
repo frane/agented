@@ -37,6 +37,7 @@ func engineForMerge(t *rapid.T) (*cmd.Engine, string) {
 		DBPath: filepath.Join(dir, "p.db"),
 	}, dir
 }
+
 // TestMergeNoOverlapNoConflict: when branches A and B touch disjoint line
 // ranges of the LCA, the merge commits cleanly and contains both changes.
 func TestMergeNoOverlapNoConflict(t *testing.T) {

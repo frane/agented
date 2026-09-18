@@ -226,7 +226,7 @@ func groupHunks(ops []Op, context int) []hunk {
 		hunks = append(hunks, hunk{
 			startA: startA + 1, lenA: lenA,
 			startB: startB + 1, lenB: lenB,
-			ops:    collected,
+			ops: collected,
 		})
 		// Advance posA/posB to end of this hunk.
 		for _, op := range collected {

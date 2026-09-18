@@ -172,15 +172,14 @@ func (e *Engine) replacePattern(in ReplaceInput) (*Result, error) {
 	}, nil
 }
 
-
 // InsertInput is the input to insert.
 type InsertInput struct {
-	Path        string
-	After       int
-	Text        string
-	Expect      string
+	Path          string
+	After         int
+	Text          string
+	Expect        string
 	NoTransaction bool
-	AutoOpen    bool
+	AutoOpen      bool
 }
 
 // Insert inserts text after a line.
@@ -227,11 +226,11 @@ func (e *Engine) Insert(in InsertInput) (*Result, error) {
 
 // DeleteInput is the input to delete.
 type DeleteInput struct {
-	Path        string
-	Start, End  int
-	Expect      string
+	Path          string
+	Start, End    int
+	Expect        string
 	NoTransaction bool
-	AutoOpen    bool
+	AutoOpen      bool
 }
 
 // Delete removes a range of lines.

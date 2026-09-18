@@ -17,8 +17,8 @@ const (
 	ansiReset    = "\x1b[0m"
 	ansiBold     = "\x1b[1m"
 	ansiDim      = "\x1b[2m"
-	ansiRedBg    = "\x1b[48;5;52m"  // dark red bg
-	ansiGreenBg  = "\x1b[48;5;22m"  // dark green bg
+	ansiRedBg    = "\x1b[48;5;52m" // dark red bg
+	ansiGreenBg  = "\x1b[48;5;22m" // dark green bg
 	ansiRedFg    = "\x1b[31m"
 	ansiGreenFg  = "\x1b[32m"
 	ansiYellowFg = "\x1b[33m"

@@ -22,14 +22,14 @@ import (
 // workspaceSymbol, references, definition, and the publishDiagnostics
 // notification.
 type Client struct {
-	cmd      *exec.Cmd
-	stdin    io.WriteCloser
-	stdout   io.ReadCloser
-	stderr   io.ReadCloser
+	cmd    *exec.Cmd
+	stdin  io.WriteCloser
+	stdout io.ReadCloser
+	stderr io.ReadCloser
 
-	mu       sync.Mutex
-	nextID   int64
-	pending  map[int64]chan rpcResponse
+	mu      sync.Mutex
+	nextID  int64
+	pending map[int64]chan rpcResponse
 
 	onPublish func(uri string, version *int, diags []LSPDiagnostic)
 	onLog     func(line string)
@@ -93,11 +93,11 @@ type LSPSymbolInfo struct {
 
 // LSPDocumentSymbol is the per-file hierarchical symbol record. We flatten it.
 type LSPDocumentSymbol struct {
-	Name     string              `json:"name"`
-	Kind     int                 `json:"kind"`
-	Range    LSPLocation         `json:"-"`
-	Selection LSPLocation        `json:"-"`
-	Children []LSPDocumentSymbol `json:"children,omitempty"`
+	Name      string              `json:"name"`
+	Kind      int                 `json:"kind"`
+	Range     LSPLocation         `json:"-"`
+	Selection LSPLocation         `json:"-"`
+	Children  []LSPDocumentSymbol `json:"children,omitempty"`
 	// Raw fields we unmarshal manually because the field name overlaps with
 	// LSPLocation.
 	RawRange struct {

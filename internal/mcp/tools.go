@@ -618,7 +618,6 @@ func RegisterTools(s *mserver.MCPServer, pool *cmd.Pool, stderr io.Writer) {
 		}, pool, stderr, (*cmd.Engine).Merge),
 	)
 
-
 	// who — actor identity is constant across the pool.
 	s.AddTool(
 		mcpgo.NewTool("ae_who",

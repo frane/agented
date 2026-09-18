@@ -206,7 +206,7 @@ func newConfigCmd(a *App) *cobra.Command {
 		Use:     "validate [file]",
 		Aliases: []string{"v"},
 		Short:   "Validate a config file",
-		Args:  cobra.MaximumNArgs(1),
+		Args:    cobra.MaximumNArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
 			if len(args) == 1 {
 				raw, err := config.LoadFile(args[0])
@@ -255,4 +255,3 @@ func configPathFor(a *App, globalFlag bool) string {
 	}
 	return workspace.ConfigProjectPath(dir)
 }
-

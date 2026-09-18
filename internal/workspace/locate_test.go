@@ -207,7 +207,6 @@ func TestLocateWithNoProjectErrors(t *testing.T) {
 	}
 }
 
-
 func TestLocateForFileAbsolutePathFollowsFile(t *testing.T) {
 	root := t.TempDir()
 	t.Setenv("HOME", filepath.Dir(root))

@@ -43,49 +43,49 @@ type Result struct {
 	// Stale marks a read whose served content is known to differ from the
 	// file on disk and was deliberately not reconciled (concurrency.
 	// auto_load_on_drift=false). Warning carries the human-readable form.
-	Stale bool
-	Conflict   *store.ConflictResponse
-	FileID     *int64
-	EditID     *int64
+	Stale    bool
+	Conflict *store.ConflictResponse
+	FileID   *int64
+	EditID   *int64
 
 	// Typed payloads. Only one is set per call.
-	Open     *OpenResult
-	List     *ListResult
-	Status   *StatusResult
-	View     *ViewResult
-	Search   *SearchResult
-	Diff     *DiffResult
-	Log      *LogResult
-	Edit     *EditResult
-	History  *HistoryResult
-	Branches *BranchesResult
-	Marks    *MarksResult
-	Mark     *MarkResult
-	Annot    *AnnotResult
-	Annots   *AnnotsResult
+	Open         *OpenResult
+	List         *ListResult
+	Status       *StatusResult
+	View         *ViewResult
+	Search       *SearchResult
+	Diff         *DiffResult
+	Log          *LogResult
+	Edit         *EditResult
+	History      *HistoryResult
+	Branches     *BranchesResult
+	Marks        *MarksResult
+	Mark         *MarkResult
+	Annot        *AnnotResult
+	Annots       *AnnotsResult
 	AnnotsSearch *AnnotsSearchResult
-	Tx       *TxResult
-	Save     *SaveResult
-	Load     *LoadResult
-	Init     *InitResult
-	Skill    *SkillResult
-	Who      *WhoResult
-	Version  *VersionResult
-	Config   *ConfigResult
-	Prune    *PruneResult
-	Apply    *ApplyResult
-	Merge    *MergeResult
-	Find     *FindResult
-	Extract  *ExtractResult
-	Diag     *DiagResult `json:"Diag,omitempty"`
+	Tx           *TxResult
+	Save         *SaveResult
+	Load         *LoadResult
+	Init         *InitResult
+	Skill        *SkillResult
+	Who          *WhoResult
+	Version      *VersionResult
+	Config       *ConfigResult
+	Prune        *PruneResult
+	Apply        *ApplyResult
+	Merge        *MergeResult
+	Find         *FindResult
+	Extract      *ExtractResult
+	Diag         *DiagResult `json:"Diag,omitempty"`
 }
 
 // OpenResult is returned by the open verb.
 type OpenResult struct {
-	File        store.FileInfo
-	Reopened    bool
+	File         store.FileInfo
+	Reopened     bool
 	ContentReset bool
-	Annotations []store.Annotation
+	Annotations  []store.Annotation
 }
 
 // ListResult lists files.
@@ -107,14 +107,14 @@ type StatusResult struct {
 	Cwd          string
 	WorkspaceDir string
 
-	File           *store.FileInfo
-	Dirty          bool
-	DiskDiff       string
-	BranchCount    int
-	MarkCount      int
+	File            *store.FileInfo
+	Dirty           bool
+	DiskDiff        string
+	BranchCount     int
+	MarkCount       int
 	AnnotationCount int
-	StorageReport  *store.StorageReport
-	WorkspaceFiles []WorkspaceFileRow
+	StorageReport   *store.StorageReport
+	WorkspaceFiles  []WorkspaceFileRow
 }
 
 // ViewResult is a file view.
@@ -218,8 +218,8 @@ type TxResult struct {
 
 // SaveResult records a save-to-disk.
 type SaveResult struct {
-	Path string
-	Hash string
+	Path  string
+	Hash  string
 	Bytes int
 }
 
@@ -360,7 +360,7 @@ func (e *Engine) maybeRunScheduledPrune() error {
 	_ = e.Store.AuditWrite(
 		"agented", "auto_prune",
 		map[string]any{
-			"files_pruned":   rep.FilesClosedPruned,
+			"files_pruned":    rep.FilesClosedPruned,
 			"branches_pruned": rep.BranchesPruned,
 			"edits_collapsed": rep.EditsCollapsed,
 		},

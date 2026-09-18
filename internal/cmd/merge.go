@@ -282,6 +282,7 @@ const (
 	mergeB
 	mergeBoth
 )
+
 type lineClass struct {
 	changed bool
 	lines   []string // replacement lines from this branch (empty if deleted)

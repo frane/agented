@@ -45,4 +45,3 @@ func newLoadCmd(a *App) *cobra.Command {
 	}
 	return c
 }
-

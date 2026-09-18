@@ -50,9 +50,9 @@ const (
 
 // Result captures what happened (or would happen) for one target.
 type Result struct {
-	Target string
-	Status Status
-	Path   string
+	Target  string
+	Status  Status
+	Path    string
 	Reason  string // populated when Status is skipped/error/not-found
 	Version string // version that was just installed (empty for skipped/error)
 }

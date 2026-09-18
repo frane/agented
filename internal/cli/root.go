@@ -59,9 +59,9 @@ func Build(versionInfo cmd.VersionInput, stdin io.Reader, stdout, stderr io.Writ
 
 // App carries flags and lazy state for all CLI invocations.
 type App struct {
-	Stdin             io.Reader
-	Stdout, Stderr    io.Writer
-	Version           cmd.VersionInput
+	Stdin          io.Reader
+	Stdout, Stderr io.Writer
+	Version        cmd.VersionInput
 
 	AsActor           string
 	OutputFormat      string

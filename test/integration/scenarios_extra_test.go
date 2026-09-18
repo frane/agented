@@ -376,7 +376,7 @@ func TestScenario27_DailyAutoPrune(t *testing.T) {
 	if _, err := os.Stat(dbPath); err != nil {
 		t.Fatalf("db missing: %v", err)
 	}
-	pastMs := time.Now().Add(-25*time.Hour).UnixMilli()
+	pastMs := time.Now().Add(-25 * time.Hour).UnixMilli()
 	cmd := exec.Command(aeBin, "config", "show")
 	cmd.Dir = s.dir
 	cmd.Env = append(os.Environ(), "AE_ACTOR="+s.actor)

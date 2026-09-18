@@ -18,8 +18,8 @@ import (
 //	DETACHED_PROCESS         = 0x00000008  child has no console
 //	CREATE_NEW_PROCESS_GROUP = 0x00000200  child can be sent CTRL_BREAK_EVENT
 const (
-	winDetachedProcess        = 0x00000008
-	winCreateNewProcessGroup  = 0x00000200
+	winDetachedProcess       = 0x00000008
+	winCreateNewProcessGroup = 0x00000200
 )
 
 // spawnDaemonBackground re-execs the current binary as `ae lsp`, detached

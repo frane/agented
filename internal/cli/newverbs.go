@@ -105,10 +105,10 @@ func newMoveCmd(a *App) *cobra.Command {
 // newMergeCmd wires `ae merge`.
 func newMergeCmd(a *App) *cobra.Command {
 	var (
-		leaves    []string
-		prefer    string
-		resolves  []string
-		abort     bool
+		leaves   []string
+		prefer   string
+		resolves []string
+		abort    bool
 	)
 	c := &cobra.Command{
 		Use:   "merge <path>",
@@ -189,9 +189,9 @@ func newExtractCmd(a *App) *cobra.Command {
 		expect   string
 	)
 	c := &cobra.Command{
-		Use:     "extract <path>",
-		Short:   "Cut a line range out of one file and write it to another (auto-creates dst)",
-		Args:    cobra.ExactArgs(1),
+		Use:   "extract <path>",
+		Short: "Cut a line range out of one file and write it to another (auto-creates dst)",
+		Args:  cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
 			if rangeStr == "" {
 				return wrapErrCode(1, errors.New("--range is required"))

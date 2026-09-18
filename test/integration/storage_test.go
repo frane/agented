@@ -257,4 +257,3 @@ func hashHex(s string) string {
 
 // suppress unused warning from the `os` import used only conditionally.
 var _ = os.Stat
-

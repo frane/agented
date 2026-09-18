@@ -16,9 +16,9 @@ import (
 // flow (which stays terse / token-cheap).
 func newShowCmd(a *App) *cobra.Command {
 	var (
-		editID    int64
-		noColor   bool
-		noSyntax  bool
+		editID   int64
+		noColor  bool
+		noSyntax bool
 	)
 	c := &cobra.Command{
 		Use:   "show <path>",

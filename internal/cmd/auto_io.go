@@ -137,9 +137,10 @@ func (e *Engine) autoSaveAfterEdit(fi *store.FileInfo, head string) (saved bool,
 }
 
 // applyImplicitIO is the convenience wrapper for write verbs:
-//   1. detect drift before the edit
-//   2. caller runs the actual edit (returning new head content)
-//   3. auto-save the result
+//  1. detect drift before the edit
+//  2. caller runs the actual edit (returning new head content)
+//  3. auto-save the result
+//
 // Returns the final EditResult fields populated for the caller to copy
 // onto the user-facing Result.
 func (e *Engine) finishWriteIO(fi *store.FileInfo, headContent string, drifted bool, driftReason string) (saved bool, loaded bool, reason string, err error) {

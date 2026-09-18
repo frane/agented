@@ -119,11 +119,11 @@ func (e *Engine) List(in ListInput) (*Result, error) {
 
 // StatusInput is the input to status.
 type StatusInput struct {
-	Path           string
-	Storage        bool
-	DiffDisk       bool
-	Workspace      bool // -W: full per-file table for the entire workspace
-	IncludeClosed  bool // -c: include closed files in the workspace listing
+	Path          string
+	Storage       bool
+	DiffDisk      bool
+	Workspace     bool // -W: full per-file table for the entire workspace
+	IncludeClosed bool // -c: include closed files in the workspace listing
 }
 
 // Status returns workspace or file status.

@@ -7,15 +7,15 @@ import (
 
 // PruneInput is the input to prune.
 type PruneInput struct {
-	ClosedOlderThan      string // duration string; "" = use config
-	DeadBranches         bool
-	DeadBranchesIdleFor  string
-	KeepRecentPerBranch  int
-	OrphanMarks          bool
-	Vacuum               bool
-	DryRun               bool
-	Confirm              bool
-	FileID               *int64
+	ClosedOlderThan     string // duration string; "" = use config
+	DeadBranches        bool
+	DeadBranchesIdleFor string
+	KeepRecentPerBranch int
+	OrphanMarks         bool
+	Vacuum              bool
+	DryRun              bool
+	Confirm             bool
+	FileID              *int64
 }
 
 // Prune runs a manual prune.
@@ -84,7 +84,7 @@ func (e *Engine) PruneAudit(in PruneAuditInput) (*Result, error) {
 			now().UnixMilli()-d.Milliseconds(),
 		).Scan(&n)
 		return &Result{Prune: &PruneResult{Report: store.PruneReport{
-			DryRun: true,
+			DryRun:  true,
 			Details: []string{formatPlural(n, "audit entry", "audit entries") + " would be removed"},
 		}}}, nil
 	}

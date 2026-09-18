@@ -19,15 +19,15 @@ import (
 // --scope-* overrides take precedence.
 func newSetupCmd(a *App) *cobra.Command {
 	var (
-		target            string
-		scope             string
-		scopeSkill        string
-		scopeRules        string
-		scopePerms        string
-		dryRun            bool
-		yes               bool
-		uninstall         bool
-		legacyFlow        bool
+		target     string
+		scope      string
+		scopeSkill string
+		scopeRules string
+		scopePerms string
+		dryRun     bool
+		yes        bool
+		uninstall  bool
+		legacyFlow bool
 	)
 	c := &cobra.Command{
 		Use:   "setup",

@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 )
+
 func Install(opts InstallOptions) ([]Result, error) {
 	if err := validateScope(opts); err != nil {
 		return nil, err
@@ -301,4 +302,3 @@ func uninstallOne(t *Target, opts UninstallOptions) Result {
 	}
 	return Result{Target: t.Name, Status: StatusRemoved, Path: dir}
 }
-
