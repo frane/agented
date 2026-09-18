@@ -47,6 +47,7 @@ func newReplaceCmd(a *App) *cobra.Command {
 		limit        int
 		dryRun       bool
 		allowNoMatch bool
+		literal      bool
 	)
 	ef := &editFlags{}
 	c := &cobra.Command{
@@ -69,6 +70,7 @@ func newReplaceCmd(a *App) *cobra.Command {
 				Limit:         limit,
 				DryRun:        dryRun,
 				AllowNoMatch:  allowNoMatch,
+				Literal:       literal,
 			}
 			argsLog := map[string]any{"path": args[0]}
 			if pattern == "" {
@@ -103,6 +105,7 @@ func newReplaceCmd(a *App) *cobra.Command {
 	c.Flags().IntVarP(&limit, "limit", "L", 0, "Cap on regex replacements (0 = unlimited)")
 	c.Flags().BoolVarP(&dryRun, "dry-run", "n", false, "Count matches without writing")
 	c.Flags().BoolVar(&allowNoMatch, "allow-no-match", false, "Exit 0 when --pattern matches nothing (by default 0 matches is an error, so `&& ae save` chains stop)")
+	c.Flags().BoolVarP(&literal, "literal", "l", false, "With --pattern, insert --with verbatim: no $1/${name} expansion. Use for replacements containing $ (shell vars, JS template literals)")
 	attachReplaceFlags(c, ef)
 	// --text is accepted as an alias for --with: insert/delete take --text,
 	// and sed/sd muscle memory makes it the first guess.

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/frane/agented/internal/store"
@@ -14,6 +15,11 @@ import (
 // exactly how stale-content clobbers ship in `replace && save` shell chains,
 // so 0 matches is an error by default.
 var ErrNoMatches = errors.New("no matches")
+
+// ErrBadExpansion is returned when a pattern-mode replacement references a
+// capture group the pattern does not have. Go would expand it to an empty
+// string; ae refuses instead.
+var ErrBadExpansion = errors.New("replacement references an unknown capture group")
 
 // ReplaceInput is the input to replace.
 type ReplaceInput struct {
@@ -31,6 +37,7 @@ type ReplaceInput struct {
 	Limit        int  // cap on number of replacements; 0 = unlimited
 	DryRun       bool // only count matches; don't write
 	AllowNoMatch bool // treat 0 pattern matches as success instead of ErrNoMatches
+	Literal      bool // pattern mode: insert --with verbatim, no $-expansion
 }
 
 // Replace mutates a range of lines, or — when in.Pattern is set — every RE2
@@ -86,6 +93,64 @@ func (e *Engine) Replace(in ReplaceInput) (*Result, error) {
 }
 
 // replacePattern implements the regex-replace path.
+// expansionRefRE finds the capture references Go's Regexp.Expand would act on:
+// $$ (a literal $), ${name}, or a bare $name. It deliberately mirrors Go's own
+// scanner — a bare name is greedily [A-Za-z0-9_]+, and a brace form whose
+// contents are not a valid name is left literal, which is why the outer
+// `${[...xs].map(...)}` of a template literal survives untouched while an
+// inner `${id}` does not.
+var expansionRefRE = regexp.MustCompile(`\$(?:\$|\{([A-Za-z0-9_]*)\}|([A-Za-z0-9_]+))`)
+
+// validateExpansion rejects a replacement template that references a capture
+// group the pattern does not have.
+//
+// Go resolves an unknown group to the empty string, so `-w 'x: ${id}'` against
+// a pattern with no group named id silently deletes the reference. Reported
+// from a real edit: writing a TypeScript template literal through
+// `ae s -p ... -w ...` produced `${[...duplicates].map(id => “)`, which is
+// syntactically valid, so the compiler accepted it and only a reread caught
+// it. Silent corruption that still compiles is the worst outcome ae can
+// produce, so this turns it into a refusal before anything is written.
+func validateExpansion(re *regexp.Regexp, template string) error {
+	names := re.SubexpNames()
+	var bad []string
+	for _, m := range expansionRefRE.FindAllStringSubmatch(template, -1) {
+		if m[0] == "$$" {
+			continue // literal $, not a reference
+		}
+		ref := m[1]
+		if ref == "" {
+			ref = m[2]
+		}
+		if ref == "" {
+			continue // ${} — Go leaves it literal
+		}
+		if idx, err := strconv.Atoi(ref); err == nil {
+			if idx <= re.NumSubexp() {
+				continue
+			}
+			bad = append(bad, "$"+ref)
+			continue
+		}
+		found := false
+		for _, n := range names {
+			if n != "" && n == ref {
+				found = true
+				break
+			}
+		}
+		if !found {
+			bad = append(bad, "${"+ref+"}")
+		}
+	}
+	if len(bad) == 0 {
+		return nil
+	}
+	return fmt.Errorf("%w: replacement references %s, which the pattern does not capture (it has %d group(s)); Go would expand each to an empty string and write code that can still compile. Escape a literal dollar as $$ (`${%s}` -> `$${%s}`), or pass --literal to disable expansion entirely",
+		ErrBadExpansion, strings.Join(bad, ", "), re.NumSubexp(),
+		strings.Trim(bad[0], "${}$"), strings.Trim(bad[0], "${}$"))
+}
+
 func (e *Engine) replacePattern(in ReplaceInput) (*Result, error) {
 	fi, txID, _, err := e.prepareWrite(in.Path, in.AutoOpen, in.NoTransaction)
 	if err != nil {
@@ -94,6 +159,11 @@ func (e *Engine) replacePattern(in ReplaceInput) (*Result, error) {
 	re, err := regexp.Compile(in.Pattern)
 	if err != nil {
 		return nil, fmt.Errorf("pattern compile error: %w", err)
+	}
+	if !in.Literal {
+		if verr := validateExpansion(re, in.With); verr != nil {
+			return nil, verr
+		}
 	}
 	// Reconcile disk drift first (parity with the range verbs): the pattern
 	// must run against disk reality, not a stale head.
@@ -141,8 +211,13 @@ func (e *Engine) replacePattern(in ReplaceInput) (*Result, error) {
 	prev := 0
 	for _, m := range matches {
 		sb.WriteString(content[prev:m[0]])
-		// re.ExpandString supports $1, $name, etc.
-		sb.Write(re.ExpandString(nil, in.With, content, m))
+		if in.Literal {
+			// No expansion: the replacement goes in byte for byte.
+			sb.WriteString(in.With)
+		} else {
+			// re.ExpandString supports $1, $name, etc.
+			sb.Write(re.ExpandString(nil, in.With, content, m))
+		}
 		prev = m[1]
 	}
 	sb.WriteString(content[prev:])

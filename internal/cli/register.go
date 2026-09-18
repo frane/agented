@@ -219,6 +219,7 @@ func wrapErr(err error) error {
 		errors.Is(err, store.ErrMarkExists),
 		errors.Is(err, store.ErrRangeOutOfBounds),
 		errors.Is(err, store.ErrDeletedOnDisk),
+		errors.Is(err, cmd.ErrBadExpansion),
 		errors.Is(err, store.ErrNoTransaction):
 		return &ExitError{Code: 1, Err: err}
 	}

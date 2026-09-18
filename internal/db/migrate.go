@@ -24,7 +24,15 @@ func Migrate(conn *sql.DB) error {
 		return err
 	}
 	if current > CurrentSchemaVersion {
-		return ErrSchemaTooNew
+		// Say the numbers and the fix. This fires when an older binary meets
+		// a workspace a newer one migrated — a shared worktree where the
+		// agents were upgraded piecemeal, which is the normal way it happens.
+		// Bare "schema is newer than this binary supports" left the reader
+		// with no version to compare and nothing to do, and over MCP it
+		// surfaces to the user as an opaque CONNECTION_CLOSED with no text
+		// at all, because the server exits before it can answer.
+		return fmt.Errorf("%w: workspace is at schema v%d, this ae supports up to v%d — upgrade ae (brew upgrade agented, or npx agented@latest); if this workspace is shared, upgrade every agent using it, since the older ones stay locked out until they are",
+			ErrSchemaTooNew, current, CurrentSchemaVersion)
 	}
 	migs, err := loadMigrations()
 	if err != nil {

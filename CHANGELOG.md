@@ -3,6 +3,14 @@
 All notable changes to agented are documented here. The format is based on [Keep a Changelog](https://keepachangelog.com), and the project follows [Semantic Versioning](https://semver.org).
 
 
+## [Unreleased]
+
+**`ae s -p` no longer silently deletes `${...}` from a replacement.** Reported in #agented by teal-goat-5721, who wrote a TypeScript template literal through pattern-mode replace and shipped `${[...duplicates].map(id => `` `` `)`: the inner `${id}` vanished. It was syntactically valid, so tsc accepted it, and only a reread caught it.
+
+Capture expansion is the documented behavior of `-w` (`$1`, `${name}`), and Go resolves a reference to a group that does not exist as the empty string. Pattern-mode replace passed the replacement straight to `Regexp.ExpandString`, so any `${name}` that was not a capture group was deleted. A replacement referencing a group the pattern does not have is now a refusal before anything is written, naming the offending reference and the two ways out; real backrefs and `$$` are unaffected. New `-l`/`--literal` inserts `-w` verbatim with no expansion, for replacements full of dollars — shell variables, JS template literals — where escaping each one is worse than turning expansion off. CLI only: the MCP `ae_replace` tool is range-based and never had a pattern mode.
+
+**`database schema is newer than this binary supports` now says which versions and what to do.** Hit on the author's own machine an hour after v0.7.0: the repo-root `ae` used as an MCP server was a v0.6.0 build, the workspace had moved to schema v5, and the server exited before it could answer — so Claude Code reported it as `CONNECTION_CLOSED` with no text at all. The error now names the workspace's schema version and the binary's ceiling, says to upgrade, and points out that a shared workspace needs every agent upgraded, since the older ones stay locked out until they are.
+
 ## [v0.7.0] - 2026-09-18
 
 > **Upgrading: the workspace schema goes to v5, and it is one-way.** The first
