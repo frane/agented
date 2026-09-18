@@ -4,10 +4,12 @@
 # from the latest git tag. The launcher downloads binaries from the GitHub
 # release of the SAME version, so publish order matters:
 #
-#   git push --tags  ->  goreleaser CI uploads release assets  ->  make publish-npm
+#   git push --tags  ->  goreleaser uploads release assets  ->  npm publish
 #
+# All three now happen in the release workflow, which publishes to npm via
+# trusted publishing (OIDC) rather than a token or an interactive 2FA prompt.
 # The script refuses to stage a version whose release assets aren't
-# downloadable yet, so publish-npm can't ship a launcher that 404s.
+# downloadable yet, so the publish can't ship a launcher that 404s.
 #
 # Usage: scripts/stage-npm.sh [version]   (default: latest tag, v-stripped)
 

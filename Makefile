@@ -134,14 +134,19 @@ publish-smithery-mcp: stage-mcpb
 stage-npm:
 	@scripts/stage-npm.sh
 
+# Manual npm publish. NOT part of publish-all: the release workflow ships the
+# launcher from CI via npm trusted publishing (OIDC), which is why publishing
+# no longer needs an interactive 2FA prompt. Kept as the escape hatch for a
+# release where CI could not do it; prefer re-running the release workflow
+# with npm-only=true.
 publish-npm: stage-npm
 	@command -v npm >/dev/null 2>&1 || (echo "error: npm not on PATH" >&2 ; exit 1)
 	npm publish ./dist/npm-pkg --access public
 
-publish-all: stage-plugin verify-plugin-skill publish-skill publish-smithery-skill publish-smithery-mcp publish-npm
+publish-all: stage-plugin verify-plugin-skill publish-skill publish-smithery-skill publish-smithery-mcp
 	@echo
 	@echo "All catalog publishes complete."
-	@echo "GitHub release / Homebrew cask / Claude+Codex+Gemini plugins update automatically when you push the new tag."
+	@echo "GitHub release / Homebrew cask / npm launcher / Claude+Codex+Gemini plugins update automatically when you push the new tag."
 
 # Claude Code plugin sync.
 #

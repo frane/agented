@@ -4,10 +4,29 @@ on:
   push:
     tags:
       - 'v*'
+  # Manual dispatch, mainly for npm-only: stage-npm.sh refuses to publish a
+  # launcher whose release assets aren't downloadable yet, so if the registry
+  # lags goreleaser the npm step can fail on an otherwise good release. This
+  # re-publishes the launcher for an already-released tag without cutting a
+  # new one.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to release (e.g. v0.7.0)"
+        required: true
+      npm-only:
+        description: "Only publish the npm launcher for an already-released tag"
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: write
   packages: write
+  # npm trusted publishing: the workflow authenticates to npmjs.com with
+  # GitHub's OIDC token. No NPM_TOKEN secret, and no interactive 2FA — which
+  # is what kept `npx agented` pinned to a human running `make publish-npm`.
+  id-token: write
 
 jobs:
   goreleaser:
@@ -18,16 +37,25 @@ jobs:
         with:
           fetch-depth: 0
 
+      # npm-only: the tag exists and its binaries are already published;
+      # check it out so the launcher we ship matches it.
+      - name: Check out existing tag (npm-only)
+        if: github.event_name == 'workflow_dispatch' && inputs.npm-only
+        run: git checkout "refs/tags/${{ github.event.inputs.tag }}"
+
       - name: Set up Go
+        if: ${{ !inputs.npm-only }}
         uses: actions/setup-go@v5
         with:
           go-version: '1.23'
           cache: true
 
       - name: Run tests
+        if: ${{ !inputs.npm-only }}
         run: go test ./...
 
       - name: Run GoReleaser
+        if: ${{ !inputs.npm-only }}
         uses: goreleaser/goreleaser-action@v6
         with:
           distribution: goreleaser
@@ -39,3 +67,36 @@ jobs:
           # frane/homebrew-tap. Missing token is fine: brews.skip_upload
           # in .goreleaser.yaml short-circuits the brew step.
           HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
+
+      # The launcher downloads binaries from the release of the SAME version,
+      # so it must publish after goreleaser has uploaded them. stage-npm.sh
+      # enforces that by refusing to stage until checksums.txt is reachable;
+      # the retry covers the registry lagging the upload by a few seconds.
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Publish npm launcher
+        run: |
+          # Trusted publishing needs the OIDC exchange, npm >= 11.5.1.
+          npm install -g npm@latest
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          staged=""
+          for attempt in 1 2 3 4 5; do
+            if scripts/stage-npm.sh "${TAG#v}"; then
+              staged=yes
+              break
+            fi
+            echo "release assets not visible yet (attempt $attempt); waiting"
+            sleep 20
+          done
+          # Fail loudly rather than publishing whatever dist/npm-pkg happens
+          # to hold: a launcher that 404s is worse than no launcher.
+          if [ -z "$staged" ]; then
+            echo "error: could not stage the npm launcher for $TAG" >&2
+            echo "re-run this workflow with npm-only=true once the release assets are up" >&2
+            exit 1
+          fi
+          npm publish ./dist/npm-pkg --access public

@@ -3,7 +3,19 @@
 All notable changes to agented are documented here. The format is based on [Keep a Changelog](https://keepachangelog.com), and the project follows [Semantic Versioning](https://semver.org).
 
 
-## [Unreleased]
+## [v0.7.0] - 2026-09-18
+
+> **Upgrading: the workspace schema goes to v5, and it is one-way.** The first
+> upgraded `ae` to touch a workspace migrates it, and every older `ae` in that
+> worktree then fails with `migrate: database schema is newer than this binary
+> supports`. On a shared worktree, upgrade every agent together rather than
+> piecemeal — otherwise upgrading one locks out the rest. Nothing is lost; the
+> older binaries start working again once they are upgraded.
+>
+> First read of a stale file folds disk into history as a `load` edit, so the
+> first sweep over a worktree that drifted while ae was not watching takes
+> seconds rather than milliseconds (measured: 7.5s for 983 fully-stale files).
+> One-off, per stale file, not per sweep.
 
 **The read verbs no longer answer from a stale buffer.** Reported from a shared worktree (#agented, teal-goat-5721) where 488 of 983 tracked entries were stale and an authorization audit nearly filed a critical cross-tenant false positive off an `ae view` that served a version of a function without its org-membership check — caught only because ae's line numbers disagreed with grep's.
 
@@ -26,6 +38,8 @@ All notable changes to agented are documented here. The format is based on [Keep
 **Disk stamps make reconcile-on-read free for the CLI** (schema v5: `files.disk_mtime_ns`, `files.disk_size`). The in-process drift cache cannot help `ae`, where every invocation is a new process with a cold map, so a workspace-wide `ae find` would read and hash every open file every time. ae now records the (mtime, size) at which a file last matched head and compares one stat against it. Measured on a 983-file workspace: cold 430ms, warm 145ms, and **145ms with the reconcile removed entirely** — the fast path costs nothing. `find` amortizes the stamps over one read and one write for the whole workspace rather than a transaction per file.
 
 **`ae config set` no longer wedges the workspace on a boolean key.** Values were coerced against the type already present in the user's config file — but the defaults live in the embedded `defaults.json`, so a key the file didn't mention yet had nothing to coerce against and landed as a string. `ae config set concurrency.auto_load_on_drift false` wrote `"false"`, and every subsequent ae command then died with `cannot unmarshal string into ... of type bool` until the file was hand-edited. Types now come from the schema defaults, so bools and numbers are written as bools and numbers, and a bad value (`auto_prune.enabled yes-please`) is rejected instead of silently stringified. Configs already damaged this way also repair themselves on read, so a workspace that is wedged today unwedges on upgrade rather than needing hand-edited JSON. Env overrides were unaffected.
+
+**The npm launcher publishes itself.** `npx agented` shipped only when a human ran `make publish-npm` and typed a 2FA code, which is why the launcher could lag a tag. The release workflow now publishes it via npm trusted publishing — npmjs.com trusts this workflow's OIDC identity, so there is no `NPM_TOKEN` secret and no interactive prompt — matching how grpvn and almyty already do it. `publish-npm` stays as a manual escape hatch but is no longer part of `make publish-all`. Ordering is still enforced: `stage-npm.sh` refuses to stage a launcher whose release assets aren't downloadable, the workflow retries while the registry catches up, and fails loudly rather than publishing a launcher that would 404. A `workflow_dispatch` with `npm-only=true` re-publishes the launcher for an already-released tag.
 
 **No-prompt ae across every agent that has a mechanism for it.** `ae permissions install` / `ae mcp install` / `ae setup` now pre-approve ae's tool calls per client:
 
