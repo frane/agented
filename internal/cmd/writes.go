@@ -223,8 +223,18 @@ func (e *Engine) replacePattern(in ReplaceInput) (*Result, error) {
 	sb.WriteString(content[prev:])
 	newContent := sb.String()
 	// Whole-file replace: range covers the entire current head.
+	// Record what this edit actually was. args_json otherwise holds only the
+	// expanded whole-file result, which makes a pattern-mode replace
+	// indistinguishable from a full-range one and loses the template entirely.
 	er, conf, err := e.Store.Replace(fi.ID, 1, fi.LineCount, newContent,
-		store.EditOptions{Actor: e.Actor, TransactionID: txID, ExpectStateToken: in.Expect},
+		store.EditOptions{Actor: e.Actor, TransactionID: txID, ExpectStateToken: in.Expect,
+			ExtraArgs: map[string]any{
+				"mode":          "pattern",
+				"pattern":       in.Pattern,
+				"with_template": in.With,
+				"literal":       in.Literal,
+				"match_count":   len(matches),
+			}},
 		e.Config.Concurrency.RequireExpect)
 	if err != nil {
 		if errors.Is(err, store.ErrStateTokenMismatch) && conf != nil {

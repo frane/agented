@@ -12,6 +12,15 @@ type EditOptions struct {
 	Actor            string
 	TransactionID    *int64
 	ExpectStateToken string
+
+	// ExtraArgs is merged into the edit's args_json. Pattern-mode replace uses
+	// it to record the regex and the raw --with template, because args_json
+	// otherwise stores only the expanded whole-file result. Without them the
+	// audit trail cannot answer "which edits used -p, and what template did
+	// they expand?" — the question a silent-expansion bug forces you to ask
+	// afterwards, and the reason answering it once meant reconstructing intent
+	// from before/after text instead of querying for it.
+	ExtraArgs map[string]any
 }
 
 // EditResult is returned by all writing operations.
@@ -125,6 +134,9 @@ func (s *Store) applyEdit(
 		newHash := HashContent(next)
 		newCount := countLines(next)
 		lineDelta := newCount - fi.LineCount
+		for k, v := range opts.ExtraArgs {
+			args[k] = v
+		}
 		argsJSON, _ := json.Marshal(args)
 
 		var beforeBlob, afterBlob []byte

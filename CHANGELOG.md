@@ -3,6 +3,10 @@
 All notable changes to agented are documented here. The format is based on [Keep a Changelog](https://keepachangelog.com), and the project follows [Semantic Versioning](https://semver.org).
 
 
+## [v0.7.2] - 2026-09-18
+
+**Pattern-mode replace records what it was.** `args_json` stored only the expanded whole-file result, so an `ae s -p` edit was indistinguishable from a full-range one and the `--with` template was gone entirely. Auditing the v0.7.1 expansion bug across a shared worktree therefore meant reconstructing intent from before/after text, and the residue-based detectors that required either missed real corruption or drowned in false positives. Pattern-mode edits now carry `mode`, `pattern`, `with_template`, `literal` and `match_count`, so "which edits used `-p`, and what template did they expand?" is a query rather than archaeology. Range-mode edits are unchanged.
+
 ## [v0.7.1] - 2026-09-18
 
 **`ae s -p` no longer silently deletes `${...}` from a replacement.** Reported in #agented by teal-goat-5721, who wrote a TypeScript template literal through pattern-mode replace and shipped `${[...duplicates].map(id => `` `` `)`: the inner `${id}` vanished. It was syntactically valid, so tsc accepted it, and only a reread caught it.

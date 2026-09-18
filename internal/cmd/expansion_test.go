@@ -1,6 +1,7 @@
 package cmd_test
 
 import (
+	"encoding/json"
 	"errors"
 	"os"
 	"strings"
@@ -11,7 +12,7 @@ import (
 
 // Reported in #agented by teal-goat-5721: writing a TypeScript template
 // literal through `ae s -p ... -w ...` silently dropped the inner ${id},
-// shipping `${[...duplicates].map(id => ``)`. Syntactically valid, so tsc
+// shipping `${[...duplicates].map(id => “)`. Syntactically valid, so tsc
 // accepted it; only a reread caught it. Go expands an unknown capture group
 // to the empty string, and pattern-mode replace handed the replacement
 // straight to Regexp.ExpandString.
@@ -119,5 +120,72 @@ func TestReplacePatternRefusesBareUnknownRefs(t *testing.T) {
 		if !errors.Is(err, cmd.ErrBadExpansion) {
 			t.Errorf("with=%q: expected refusal, got %v", with, err)
 		}
+	}
+}
+
+// args_json used to hold only the expanded whole-file result, so a
+// pattern-mode replace was indistinguishable from a full-range one and the
+// template was gone. Auditing the silent-expansion bug afterwards therefore
+// meant reconstructing intent from before/after text. The edit now records
+// what it was, so the same question is a query.
+func TestPatternReplaceRecordsItsTemplate(t *testing.T) {
+	e, dir := newEngine(t)
+	p := writeFile(t, dir, "a.go", "foo(bar)\n")
+	if _, err := e.Open(cmd.OpenInput{Path: p}); err != nil {
+		t.Fatal(err)
+	}
+	res, err := e.Replace(cmd.ReplaceInput{
+		Path: p, Pattern: `foo\((\w+)\)`, With: "baz($1)", AutoOpen: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var argsJSON string
+	if err := e.Store.DB().QueryRow(
+		`SELECT args_json FROM edits WHERE id = ?`, *res.EditID).Scan(&argsJSON); err != nil {
+		t.Fatal(err)
+	}
+	var args map[string]any
+	if err := json.Unmarshal([]byte(argsJSON), &args); err != nil {
+		t.Fatal(err)
+	}
+	if args["mode"] != "pattern" {
+		t.Errorf("mode = %v, want pattern", args["mode"])
+	}
+	if args["pattern"] != `foo\((\w+)\)` {
+		t.Errorf("pattern not recorded: %v", args["pattern"])
+	}
+	if args["with_template"] != "baz($1)" {
+		t.Errorf("raw template not recorded: %v", args["with_template"])
+	}
+	if args["match_count"] != float64(1) {
+		t.Errorf("match_count = %v, want 1", args["match_count"])
+	}
+	if args["literal"] != false {
+		t.Errorf("literal = %v, want false", args["literal"])
+	}
+}
+
+// A range-mode replace must not grow the new keys.
+func TestRangeReplaceHasNoPatternArgs(t *testing.T) {
+	e, dir := newEngine(t)
+	p := writeFile(t, dir, "a.go", "one\ntwo\n")
+	o, err := e.Open(cmd.OpenInput{Path: p})
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err := e.Replace(cmd.ReplaceInput{
+		Path: p, Start: 1, End: 1, With: "ONE\n", Expect: o.StateToken,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var argsJSON string
+	if err := e.Store.DB().QueryRow(
+		`SELECT args_json FROM edits WHERE id = ?`, *res.EditID).Scan(&argsJSON); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(argsJSON, "with_template") || strings.Contains(argsJSON, `"mode"`) {
+		t.Errorf("range mode should not carry pattern args: %s", argsJSON)
 	}
 }
