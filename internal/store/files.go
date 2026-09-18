@@ -44,6 +44,16 @@ func (s *Store) OpenFileOpts(actor, path string, syncDrift bool) (*OpenFileResul
 		if !os.IsNotExist(err) {
 			return nil, fmt.Errorf("read %s: %w", abs, err)
 		}
+		// A path that is already registered with content but has vanished
+		// from disk is a deletion, not a creation: recreating it here (and
+		// then folding the empty file in as a new head, or worse serving the
+		// stored copy back) resurrects files somebody deliberately removed.
+		// Refuse and let the caller decide: `ae save --force` to restore
+		// from head, `ae close` to drop the path from the workspace.
+		if prev, perr := s.FileByPath(abs, false); perr == nil && prev.LineCount > 0 {
+			return nil, fmt.Errorf("%w: %s (workspace head is edit %d, %d lines; `ae save --force %s` restores it, `ae close %s` drops it)",
+				ErrDeletedOnDisk, abs, prev.HeadEditID, prev.LineCount, abs, abs)
+		}
 		// Auto-create empty file via atomicfile so write semantics are
 		// consistent with everything else (mkdir, atomic rename, validation).
 		if _, wErr := atomicfile.New(abs).Write(nil); wErr != nil {
@@ -409,6 +419,116 @@ func (s *Store) HeadContent(fileID int64) (string, error) {
 		return "", err
 	}
 	return s.Reconstruct(fi.HeadEditID)
+}
+
+// DiskStamp is the (mtime, size) a file had when its content last matched
+// head. Valid is false when ae has never recorded one (an old workspace, or a
+// file whose disk state has not been confirmed since).
+type DiskStamp struct {
+	MtimeNanos int64
+	Size       int64
+	Valid      bool
+}
+
+// DiskStampGet reads the recorded stamp for a file.
+func (s *Store) DiskStampGet(fileID int64) (DiskStamp, error) {
+	var (
+		mt, sz sql.NullInt64
+		out    DiskStamp
+	)
+	err := s.withReadTx(func(tx *sql.Tx) error {
+		return tx.QueryRow(`SELECT disk_mtime_ns, disk_size FROM files WHERE id = ?`, fileID).Scan(&mt, &sz)
+	})
+	if err != nil {
+		return out, err
+	}
+	if mt.Valid && sz.Valid {
+		out = DiskStamp{MtimeNanos: mt.Int64, Size: sz.Int64, Valid: true}
+	}
+	return out, nil
+}
+
+// DiskStampSet records that the file on disk matched head at this (mtime,
+// size). Best-effort: a failure here costs a slow path, never correctness,
+// so callers ignore the error.
+func (s *Store) DiskStampSet(fileID int64, st DiskStamp) error {
+	return s.withWriteTx(func(tx *sql.Tx) error {
+		_, err := tx.Exec(`UPDATE files SET disk_mtime_ns = ?, disk_size = ? WHERE id = ?`,
+			st.MtimeNanos, st.Size, fileID)
+		return err
+	})
+}
+
+// DiskStampGetAll reads every recorded stamp in one query. `find` walks the
+// whole workspace, and one read transaction per file would cost more than the
+// hashing the stamps exist to avoid.
+func (s *Store) DiskStampGetAll() (map[int64]DiskStamp, error) {
+	out := map[int64]DiskStamp{}
+	err := s.withReadTx(func(tx *sql.Tx) error {
+		rows, err := tx.Query(`SELECT id, disk_mtime_ns, disk_size FROM files
+			WHERE disk_mtime_ns IS NOT NULL AND disk_size IS NOT NULL`)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var id, mt, sz int64
+			if err := rows.Scan(&id, &mt, &sz); err != nil {
+				return err
+			}
+			out[id] = DiskStamp{MtimeNanos: mt, Size: sz, Valid: true}
+		}
+		return rows.Err()
+	})
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// DiskStampSetMany records stamps for many files in one transaction. `find`
+// reconciles the whole workspace, and one write transaction per file would
+// cost more than the hashing this is meant to avoid.
+func (s *Store) DiskStampSetMany(stamps map[int64]DiskStamp) error {
+	if len(stamps) == 0 {
+		return nil
+	}
+	return s.withWriteTx(func(tx *sql.Tx) error {
+		for id, st := range stamps {
+			if _, err := tx.Exec(`UPDATE files SET disk_mtime_ns = ?, disk_size = ? WHERE id = ?`,
+				st.MtimeNanos, st.Size, id); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+// HeadContentWithInfo returns the content at head together with the FileInfo
+// it was reconstructed from, both read under one snapshot.
+//
+// HeadContent resolves the head and reconstructs it in two independent reads,
+// so a caller that pairs it with a separately-fetched FileInfo can hand back
+// a state_token describing a different head than the bytes beside it — a
+// narrow window, but one that widens when several agents share a worktree.
+// Read verbs use this so the token always describes the content returned.
+func (s *Store) HeadContentWithInfo(fileID int64) (string, *FileInfo, error) {
+	var (
+		fi      *FileInfo
+		content string
+	)
+	err := s.withReadTx(func(tx *sql.Tx) error {
+		var err error
+		if fi, err = s.fileInfoByID(tx, fileID); err != nil {
+			return err
+		}
+		content, err = s.reconstructLocked(tx, fi.HeadEditID)
+		return err
+	})
+	if err != nil {
+		return "", nil, err
+	}
+	return content, fi, nil
 }
 
 // FileWithStateToken returns FileInfo plus the current state token.

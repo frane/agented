@@ -40,6 +40,10 @@ type Engine struct {
 type Result struct {
 	StateToken string
 	Warning    string
+	// Stale marks a read whose served content is known to differ from the
+	// file on disk and was deliberately not reconciled (concurrency.
+	// auto_load_on_drift=false). Warning carries the human-readable form.
+	Stale bool
 	Conflict   *store.ConflictResponse
 	FileID     *int64
 	EditID     *int64
@@ -306,6 +310,11 @@ func (e *Engine) AutoMaintenance() error {
 					"ok", "transaction auto-rolled-back due to idle timeout",
 					&fid, nil,
 				)
+				// Mirror the rollback onto disk, same as an explicit
+				// `ae rollback`: the per-op autosaves during the transaction
+				// left the rolled-back content there, and leaving it means the
+				// next read reconciles it straight back in.
+				_ = flushHead(e, fid)
 			}
 		}
 	}
@@ -399,6 +408,27 @@ func (e *Engine) resolveFile(path string) (*store.FileInfo, error) {
 	}
 	out := r.File
 	return &out, nil
+}
+
+// resolveFileForRead resolves path for a verb that serves file *content*
+// (view / search / diff), and reconciles disk drift before answering. Plain
+// resolveFile is kept for verbs whose answer does not depend on current
+// content (history, marks, annotations) and for write verbs, which do their
+// own reconcile through applyImplicitIO, and for save, whose whole job is
+// deciding what to do about a disk/head mismatch.
+//
+// Returns the file, a warning to surface (empty when disk and head agree),
+// and whether the content served is knowingly stale.
+func (e *Engine) resolveFileForRead(path string) (*store.FileInfo, string, bool, error) {
+	fi, err := e.resolveFile(path)
+	if err != nil {
+		return nil, "", false, err
+	}
+	warn, stale, rerr := e.reconcileRead(fi)
+	if rerr != nil {
+		return nil, "", false, rerr
+	}
+	return fi, warn, stale, nil
 }
 
 // resolveFileAny returns FileInfo for path including closed files.

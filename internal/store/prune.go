@@ -33,6 +33,10 @@ type PruneReport struct {
 func (s *Store) Prune(actor string, opts PruneOptions) (*PruneReport, error) {
 	report := &PruneReport{DryRun: opts.DryRun}
 	err := s.withWriteTx(func(tx *sql.Tx) error {
+		// withWriteTx may re-run this closure after a BUSY rollback; the
+		// report accumulates counters, so start each attempt from zero or a
+		// retry reports double what it did.
+		*report = PruneReport{DryRun: opts.DryRun}
 		if opts.ClosedFilesOlderThan > 0 {
 			if err := s.pruneClosedFiles(tx, opts, report); err != nil {
 				return err

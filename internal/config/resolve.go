@@ -114,6 +114,13 @@ func Resolve(globalPath, projectPath string, flagOverrides map[string]string) (*
 		sources[k] = SourceFlag
 	}
 
+	// Earlier versions of `ae config set` wrote bools and numbers as strings
+	// ("false" rather than false), and the decode below then failed on every
+	// single command — a workspace you could only unwedge by hand-editing
+	// JSON. Coerce those back against the schema before decoding so an
+	// already-damaged config repairs itself on read.
+	coerceLeavesToSchema(merged, "")
+
 	b, err := json.Marshal(merged)
 	if err != nil {
 		return nil, nil, err

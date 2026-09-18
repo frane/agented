@@ -114,6 +114,11 @@ type Concurrency struct {
 	RequireExpect string `json:"require_expect"` // writes | warn | off
 	AutoSave         string `json:"auto_save"`           // clean | off | force (default clean)
 	AutoLoadOnDrift  bool   `json:"auto_load_on_drift"` // when true, sniff disk before each write and load divergent content into a new edit
+	// ReadDrift controls what a content read (view/search/diff/find) does when
+	// disk has moved past the workspace head: reconcile (fold disk in and
+	// answer from it), warn (answer from head, flag it stale, exit 3), or
+	// refuse (error, serve nothing). Default reconcile.
+	ReadDrift string `json:"read_drift"`
 }
 
 type TransactionsCfg struct {

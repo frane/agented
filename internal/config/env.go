@@ -1,10 +1,12 @@
 package config
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 )
 
 // envApply walks the known schema and overlays AE_*=... env vars on merged.
@@ -12,6 +14,7 @@ func envApply(merged map[string]any, sources Sources) {
 	envMap := map[string]string{
 		"AE_ACTOR":                      "actor",
 		"AE_AUTO_LOAD_ON_DRIFT":         "concurrency.auto_load_on_drift",
+		"AE_READ_DRIFT":                 "concurrency.read_drift",
 		"AE_AUTO_SAVE":                  "concurrency.auto_save",
 		"AE_REQUIRE_EXPECT":             "concurrency.require_expect",
 		"AE_AUTO_ROLLBACK_IDLE_FOR":     "transactions.auto_rollback_idle_for",
@@ -51,6 +54,15 @@ func setDottedString(m map[string]any, dotted, val string) error {
 	for i, p := range parts {
 		if i == len(parts)-1 {
 			existing, hadExisting := cur[p]
+			if !hadExisting {
+				// The key isn't in this file yet — the overwhelmingly common
+				// case for `ae config set`, since the defaults live in the
+				// embedded defaults.json, not in the user's config. Without a
+				// type to coerce against, a bool key was written as the string
+				// "false", and every subsequent ae command then failed to
+				// decode the config: a wedged workspace from one config set.
+				existing, hadExisting = defaultLeaf(dotted)
+			}
 			coerced, err := coerce(val, existing, hadExisting)
 			if err != nil {
 				return err
@@ -66,6 +78,66 @@ func setDottedString(m map[string]any, dotted, val string) error {
 		cur = next
 	}
 	return nil
+}
+
+// coerceLeavesToSchema walks a merged config tree and rewrites any string
+// leaf whose schema default is a bool or a number into that type. Values the
+// schema does not know, and strings that do not parse, are left alone for
+// validation to report.
+func coerceLeavesToSchema(m map[string]any, prefix string) {
+	for k, v := range m {
+		path := k
+		if prefix != "" {
+			path = prefix + "." + k
+		}
+		if sub, ok := v.(map[string]any); ok {
+			coerceLeavesToSchema(sub, path)
+			continue
+		}
+		str, ok := v.(string)
+		if !ok {
+			continue
+		}
+		def, known := defaultLeaf(path)
+		if !known {
+			continue
+		}
+		if coerced, err := coerce(str, def, true); err == nil {
+			m[k] = coerced
+		}
+	}
+}
+
+// defaultLeafs is the built-in defaults as a generic JSON tree, so a dotted
+// key can be typed without the user's file mentioning it.
+var defaultLeafs = sync.OnceValue(func() map[string]any {
+	b, err := json.Marshal(Defaults())
+	if err != nil {
+		return nil
+	}
+	m := map[string]any{}
+	if err := json.Unmarshal(b, &m); err != nil {
+		return nil
+	}
+	return m
+})
+
+// defaultLeaf returns the default value at a dotted key, and whether one
+// exists. Unknown keys return (nil, false), which leaves coerce's existing
+// string behavior for config the schema doesn't know about.
+func defaultLeaf(dotted string) (any, bool) {
+	cur := any(defaultLeafs())
+	for _, p := range strings.Split(dotted, ".") {
+		m, ok := cur.(map[string]any)
+		if !ok {
+			return nil, false
+		}
+		cur, ok = m[p]
+		if !ok {
+			return nil, false
+		}
+	}
+	return cur, true
 }
 
 func coerce(val string, existing any, hadExisting bool) (any, error) {

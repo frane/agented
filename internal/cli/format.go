@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"os"
 
@@ -40,6 +41,14 @@ func (a *App) emit(r *cmd.Result) error {
 	}
 	a.notifyDaemonIfWrite(r)
 	a.emitDiagnostics(r)
+	if r.Stale {
+		// The content above does not match disk and was deliberately not
+		// reconciled (concurrency.auto_load_on_drift=false). Exit non-zero so
+		// a shell chain notices what a human would have caught in the
+		// warning: `ae view ... && something` stops instead of acting on a
+		// stale read.
+		return &ExitError{Code: 3, Err: errors.New("stale read: workspace head differs from disk (see warning above)")}
+	}
 	return nil
 }
 

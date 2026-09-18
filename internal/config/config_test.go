@@ -1,6 +1,7 @@
 package config_test
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -267,5 +268,100 @@ func TestIDELanguageCfgResolvedServersLegacy(t *testing.T) {
 	}
 	if got[0].Name != "gopls" || got[0].Command != "gopls" {
 		t.Fatalf("legacy synth wrong: %+v", got[0])
+	}
+}
+
+// `ae config set` on a key the user's file doesn't mention yet had no type to
+// coerce against, so a bool key landed as the string "false" and every later
+// ae command failed with "cannot unmarshal string into ... of type bool" —
+// one config set wedged the workspace. Types now come from the defaults.
+func TestSetDottedCoercesAgainstDefaults(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+
+	cases := []struct {
+		key  string
+		val  string
+		want any
+	}{
+		{"concurrency.auto_load_on_drift", "false", false},
+		{"auto_prune.enabled", "true", true},
+		{"output.include_state_token", "false", false},
+		{"auto_prune.policies.keep_recent_per_branch", "42", float64(42)},
+		{"concurrency.auto_save", "off", "off"},
+	}
+	for _, c := range cases {
+		if err := config.SetDotted(path, c.key, c.val); err != nil {
+			t.Fatalf("set %s: %v", c.key, err)
+		}
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw := map[string]any{}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range cases {
+		got := any(raw)
+		for _, p := range strings.Split(c.key, ".") {
+			m, ok := got.(map[string]any)
+			if !ok {
+				t.Fatalf("%s: path missing", c.key)
+			}
+			got = m[p]
+		}
+		if got != c.want {
+			t.Errorf("%s = %#v, want %#v", c.key, got, c.want)
+		}
+	}
+
+	// The written file must still decode into the typed config.
+	var cfg config.Config
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		t.Fatalf("config written by `config set` no longer decodes: %v", err)
+	}
+	if cfg.Concurrency.AutoLoadOnDrift {
+		t.Error("auto_load_on_drift did not take effect")
+	}
+
+	// A bad value for a typed key is rejected, not silently stringified.
+	if err := config.SetDotted(path, "auto_prune.enabled", "yes-please"); err == nil {
+		t.Error("expected a type error for a non-bool bool value")
+	}
+}
+
+// A config damaged by the old `config set` (bools written as strings) used to
+// fail the decode on every single ae command, leaving a workspace that could
+// only be unwedged by hand-editing JSON. It now repairs itself on read.
+func TestResolveRepairsStringTypedLeaves(t *testing.T) {
+	dir := t.TempDir()
+	ppath := filepath.Join(dir, "config.json")
+	damaged := `{
+  "concurrency": {"auto_load_on_drift": "false"},
+  "auto_prune": {"enabled": "true", "policies": {"keep_recent_per_branch": "42"}},
+  "output": {"include_state_token": "false"}
+}`
+	if err := os.WriteFile(ppath, []byte(damaged), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, _, err := config.Resolve("", ppath, nil)
+	if err != nil {
+		t.Fatalf("a config with string-typed bools must still resolve: %v", err)
+	}
+	if cfg.Concurrency.AutoLoadOnDrift {
+		t.Error(`"false" should have been read as false`)
+	}
+	if !cfg.AutoPrune.Enabled {
+		t.Error(`"true" should have been read as true`)
+	}
+	if cfg.AutoPrune.Policies.KeepRecentPerBranch != 42 {
+		t.Errorf(`"42" should have been read as 42, got %d`, cfg.AutoPrune.Policies.KeepRecentPerBranch)
+	}
+	if cfg.Output.IncludeStateToken {
+		t.Error(`output.include_state_token "false" should have been read as false`)
 	}
 }

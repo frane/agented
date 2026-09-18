@@ -14,6 +14,11 @@ func Validate(c *Config) error {
 	default:
 		return fmt.Errorf("concurrency.auto_save: invalid %q (want clean|off|force)", c.Concurrency.AutoSave)
 	}
+	switch c.Concurrency.ReadDrift {
+	case "", "reconcile", "warn", "refuse":
+	default:
+		return fmt.Errorf("concurrency.read_drift: invalid %q (want reconcile|warn|refuse)", c.Concurrency.ReadDrift)
+	}
 	switch c.AutoPrune.Schedule {
 	case "daily", "hourly", "off":
 	default:

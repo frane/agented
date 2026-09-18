@@ -35,7 +35,16 @@ func (e *Engine) Save(in SaveInput) (*Result, error) {
 	if err != nil {
 		return nil, err
 	}
-	if disk, derr := os.ReadFile(abs); derr == nil {
+	disk, derr := os.ReadFile(abs)
+	if os.IsNotExist(derr) && !in.Force && fi.LineCount > 0 {
+		// The file was deleted on disk while the workspace still holds
+		// content for it. Writing head back here is how a deliberately
+		// removed file resurrects itself. Restoring is a decision, not a
+		// side effect of `ae save`.
+		return nil, fmt.Errorf("%w: %s — refusing to recreate it from workspace head (edit %d, %d lines); `ae save --force %s` restores it, `ae close %s` drops it",
+			store.ErrDeletedOnDisk, abs, fi.HeadEditID, fi.LineCount, abs, abs)
+	}
+	if derr == nil {
 		diskHash := store.HashContent(string(disk))
 		// Short-circuit: if the on-disk file already matches head content,
 		// skip the write so save is a true no-op when there's nothing to

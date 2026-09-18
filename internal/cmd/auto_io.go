@@ -172,3 +172,132 @@ func flushHead(e *Engine, fileID int64) bool {
 	}
 	return saved
 }
+
+// reconcileRead brings fi in line with disk before a read verb serves its
+// content. Read verbs used to answer straight from the stored head, which
+// made them the one path with no drift detection at all: a file edited by
+// git, another editor, or another agent read back as whatever ae last
+// remembered, silently and with shifted line numbers. That is worse than a
+// hard failure — an agent auditing code cannot tell a stale answer from a
+// current one.
+//
+// Behavior mirrors `open`. File gone from disk: ErrDeletedOnDisk, because a
+// copy of a file that no longer exists is never the right answer. Disk equal
+// to head: no-op. Drift with concurrency.auto_load_on_drift (the default):
+// fold disk in as a new 'load' edit, update fi in place, return a warning.
+// Drift with reconciliation disabled: serve head, report it as stale.
+//
+// Returns (warning, stale, err). stale is true only in the last case: the
+// content being served does not match disk and nothing was done about it.
+func (e *Engine) reconcileRead(fi *store.FileInfo) (string, bool, error) {
+	return e.reconcileReadOpt(fi, nil)
+}
+
+// stampBatch lets a workspace-wide verb amortize the persistent stamp over
+// one read and one write, instead of a transaction per file. Both maps are
+// optional: nil preloaded means "look this file up", nil confirmed means
+// "write this file's stamp now".
+type stampBatch struct {
+	preloaded map[int64]store.DiskStamp
+	confirmed map[int64]store.DiskStamp
+}
+
+// reconcileReadOpt is reconcileRead with an optional stamp batch.
+func (e *Engine) reconcileReadOpt(fi *store.FileInfo, b *stampBatch) (string, bool, error) {
+	abs, err := filepath.Abs(fi.Path)
+	if err != nil {
+		return "", false, err
+	}
+	cur, statOK := diskStamp(abs)
+	if statOK {
+		if cached, hit := driftCache.Load(fi.ID); hit && cached.(stamp) == cur {
+			// Fast path: disk untouched since this process last synced it.
+			return "", false, nil
+		}
+		// Persistent stamp. The in-process cache is useless to the CLI —
+		// every `ae` invocation is a new process with a cold map — so
+		// without this, `ae find` would read and hash every open file in the
+		// workspace on every call.
+		if ps, ok := lookupStamp(e, fi.ID, b); ok &&
+			ps.MtimeNanos == cur.mtimeNanos && ps.Size == cur.size {
+			driftCache.Store(fi.ID, cur)
+			return "", false, nil
+		}
+	}
+	data, rerr := os.ReadFile(abs)
+	if rerr != nil {
+		if os.IsNotExist(rerr) {
+			return "", false, fmt.Errorf("%w: %s (workspace head is edit %d, %d lines; `ae save --force %s` restores it, `ae close %s` drops it)",
+				store.ErrDeletedOnDisk, abs, fi.HeadEditID, fi.LineCount, abs, abs)
+		}
+		return "", false, rerr
+	}
+	if store.HashContent(string(data)) == fi.ContentHash {
+		if statOK {
+			driftCache.Store(fi.ID, cur)
+			recordStamp(e, fi.ID, cur, b)
+		}
+		return "", false, nil
+	}
+	switch e.readDriftMode() {
+	case "refuse":
+		return "", false, fmt.Errorf("%w: %s on disk differs from workspace head (edit %d); concurrency.read_drift=refuse. Run `ae load %s` to fold the disk state into history, or set read_drift=reconcile",
+			store.ErrDriftRefused, abs, fi.HeadEditID, fi.Path)
+	case "warn":
+		return fmt.Sprintf("STALE: %s on disk differs from workspace head (edit %d); serving the workspace head, line numbers and content may not match disk. Run `ae load %s` to fold the disk state into history, or set concurrency.read_drift=reconcile to reconcile automatically.",
+			abs, fi.HeadEditID, fi.Path), true, nil
+	}
+	res, lerr := e.Store.LoadFromDisk(e.Actor, fi.ID, data)
+	if lerr != nil {
+		return "", false, lerr
+	}
+	if fresh, ferr := e.Store.FileByID(fi.ID); ferr == nil && fresh != nil {
+		*fi = *fresh
+	}
+	if s, ok := diskStamp(abs); ok {
+		driftCache.Store(fi.ID, s)
+		recordStamp(e, fi.ID, s, b)
+	}
+	return fmt.Sprintf("disk content differed from workspace head; disk state loaded as new head edit %d (previous head recoverable via ae undo / ae branches)", res.NewEditID), false, nil
+}
+
+// readDriftMode resolves what a content read does about drift:
+// reconcile (default), warn, or refuse.
+//
+// concurrency.auto_load_on_drift=false predates read_drift and meant "do not
+// touch the tree behind my back"; it still forces at least warn, so existing
+// configs keep the behavior they asked for without also having to learn the
+// new key.
+func (e *Engine) readDriftMode() string {
+	mode := e.Config.Concurrency.ReadDrift
+	if mode == "" {
+		mode = "reconcile"
+	}
+	if !e.Config.Concurrency.AutoLoadOnDrift && mode == "reconcile" {
+		return "warn"
+	}
+	return mode
+}
+
+// recordStamp persists a confirmed disk stamp, or defers it to the caller's
+// collector. Best-effort throughout: a lost stamp costs one read+hash later,
+// never correctness.
+func recordStamp(e *Engine, fileID int64, st stamp, b *stampBatch) {
+	ds := store.DiskStamp{MtimeNanos: st.mtimeNanos, Size: st.size, Valid: true}
+	if b != nil && b.confirmed != nil {
+		b.confirmed[fileID] = ds
+		return
+	}
+	_ = e.Store.DiskStampSet(fileID, ds)
+}
+
+// lookupStamp reads a file's recorded stamp, from the batch when the caller
+// preloaded them.
+func lookupStamp(e *Engine, fileID int64, b *stampBatch) (store.DiskStamp, bool) {
+	if b != nil && b.preloaded != nil {
+		ds, ok := b.preloaded[fileID]
+		return ds, ok && ds.Valid
+	}
+	ds, err := e.Store.DiskStampGet(fileID)
+	return ds, err == nil && ds.Valid
+}

@@ -209,7 +209,8 @@ func wrapErr(err error) error {
 	switch {
 	case errors.Is(err, store.ErrStateTokenMismatch),
 		errors.Is(err, store.ErrBranchAmbiguous),
-		errors.Is(err, store.ErrTransactionOwned):
+		errors.Is(err, store.ErrTransactionOwned),
+		errors.Is(err, store.ErrDriftRefused):
 		return &ExitError{Code: 3, Err: err}
 	case errors.Is(err, store.ErrFileNotFound),
 		errors.Is(err, store.ErrEditNotFound),
@@ -217,6 +218,7 @@ func wrapErr(err error) error {
 		errors.Is(err, store.ErrAnnotationNotFound),
 		errors.Is(err, store.ErrMarkExists),
 		errors.Is(err, store.ErrRangeOutOfBounds),
+		errors.Is(err, store.ErrDeletedOnDisk),
 		errors.Is(err, store.ErrNoTransaction):
 		return &ExitError{Code: 1, Err: err}
 	}

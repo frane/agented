@@ -29,6 +29,12 @@ func buildJSON(r *cmd.Result) any {
 	if r.Conflict != nil {
 		m["conflict"] = r.Conflict
 	}
+	if r.Warning != "" {
+		m["warning"] = r.Warning
+	}
+	if r.Stale {
+		m["stale"] = true
+	}
 	if r.Open != nil {
 		m["file"] = jsonFile(r.Open.File)
 		m["reopened"] = r.Open.Reopened

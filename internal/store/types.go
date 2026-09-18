@@ -31,6 +31,14 @@ var (
 	ErrNoTransaction      = errors.New("no open transaction")
 	ErrRangeOutOfBounds   = errors.New("range out of bounds")
 	ErrCorruptStorage     = errors.New("storage integrity check failed")
+	// ErrDeletedOnDisk: the path is registered in the workspace but no
+	// longer exists on disk. Reads refuse rather than serve the stored
+	// copy, and open refuses rather than recreate the file.
+	ErrDeletedOnDisk = errors.New("file deleted on disk")
+	// ErrDriftRefused: a content read found disk ahead of the workspace head
+	// and concurrency.read_drift=refuse told it to answer with nothing rather
+	// than either reconcile or serve a known-stale copy.
+	ErrDriftRefused = errors.New("disk drift refused")
 )
 
 // FileInfo describes a registered file at a moment in time.

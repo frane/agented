@@ -40,14 +40,15 @@ type ViewInput struct {
 // in.Ranges explicitly (and the CLI only does that when the user passes a
 // comma-separated -r value).
 func (e *Engine) View(in ViewInput) (*Result, error) {
-	fi, err := e.resolveFile(in.Path)
+	fi, warn, stale, err := e.resolveFileForRead(in.Path)
 	if err != nil {
 		return nil, err
 	}
-	content, err := e.Store.HeadContent(fi.ID)
+	content, fresh, err := e.Store.HeadContentWithInfo(fi.ID)
 	if err != nil {
 		return nil, err
 	}
+	fi = fresh
 	parts := splitLinesPreserve(content)
 	n := len(parts)
 	if n == 0 {
@@ -55,6 +56,8 @@ func (e *Engine) View(in ViewInput) (*Result, error) {
 		return &Result{
 			FileID:     &fi.ID,
 			StateToken: store.ComputeStateToken(fi.ID, fi.HeadEditID, fi.ContentHash),
+			Warning:    warn,
+			Stale:      stale,
 			View:       &ViewResult{Lines: nil, Start: 0, End: 0, Raw: in.Raw},
 		}, nil
 	}
@@ -132,6 +135,8 @@ func (e *Engine) View(in ViewInput) (*Result, error) {
 	return &Result{
 		FileID:     &fi.ID,
 		StateToken: store.ComputeStateToken(fi.ID, fi.HeadEditID, fi.ContentHash),
+		Warning:    warn,
+		Stale:      stale,
 		View:       &ViewResult{Lines: out, Start: ranges[0].Start, End: ranges[len(ranges)-1].End, Raw: in.Raw},
 	}, nil
 }
@@ -176,14 +181,15 @@ type SearchInput struct {
 
 // Search runs a regex search.
 func (e *Engine) Search(in SearchInput) (*Result, error) {
-	fi, err := e.resolveFile(in.Path)
+	fi, warn, stale, err := e.resolveFileForRead(in.Path)
 	if err != nil {
 		return nil, err
 	}
-	content, err := e.Store.HeadContent(fi.ID)
+	content, fresh, err := e.Store.HeadContentWithInfo(fi.ID)
 	if err != nil {
 		return nil, err
 	}
+	fi = fresh
 	limit := in.Limit
 	if limit == 0 {
 		limit = 100
@@ -199,6 +205,8 @@ func (e *Engine) Search(in SearchInput) (*Result, error) {
 	return &Result{
 		FileID:     &fi.ID,
 		StateToken: store.ComputeStateToken(fi.ID, fi.HeadEditID, fi.ContentHash),
+		Warning:    warn,
+		Stale:      stale,
 		Search:     res,
 	}, nil
 }
@@ -212,7 +220,7 @@ type DiffInput struct {
 
 // Diff returns a unified diff.
 func (e *Engine) Diff(in DiffInput) (*Result, error) {
-	fi, err := e.resolveFile(in.Path)
+	fi, warn, stale, err := e.resolveFileForRead(in.Path)
 	if err != nil {
 		return nil, err
 	}
@@ -249,6 +257,8 @@ func (e *Engine) Diff(in DiffInput) (*Result, error) {
 	return &Result{
 		FileID:     &fi.ID,
 		StateToken: store.ComputeStateToken(fi.ID, fi.HeadEditID, fi.ContentHash),
+		Warning:    warn,
+		Stale:      stale,
 		Diff:       &DiffResult{Unified: u, From: from, To: to},
 	}, nil
 }

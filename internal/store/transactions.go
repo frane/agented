@@ -163,6 +163,32 @@ func (s *Store) TransactionRollback(actor string) (*Transaction, error) {
 	return out, nil
 }
 
+// TransactionFileIDs lists the files a transaction has touched. Callers that
+// need to mirror a rollback onto disk use it to learn which files to reflush;
+// the rollback itself only moves head pointers.
+func (s *Store) TransactionFileIDs(txID int64) ([]int64, error) {
+	var ids []int64
+	err := s.withReadTx(func(tx *sql.Tx) error {
+		rows, err := tx.Query(`SELECT DISTINCT file_id FROM edits WHERE transaction_id = ?`, txID)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var fid int64
+			if err := rows.Scan(&fid); err != nil {
+				return err
+			}
+			ids = append(ids, fid)
+		}
+		return rows.Err()
+	})
+	if err != nil {
+		return nil, err
+	}
+	return ids, nil
+}
+
 // rollbackTxLocked reverts every file modified by txID. For each such file,
 // walks back from the latest edit in the tx to its parent (the pre-tx state)
 // and resets head there.
@@ -276,6 +302,8 @@ func (s *Store) AutoRollbackIdle(idle time.Duration) ([]Transaction, error) {
 	cutoff := s.nowMs() - idle.Milliseconds()
 	var rolled []Transaction
 	err := s.withWriteTx(func(tx *sql.Tx) error {
+		// Reset: this closure can be re-run after a BUSY rollback.
+		rolled = nil
 		rows, err := tx.Query(
 			`SELECT id, actor, started_at, last_activity_at, scope_file_id
 			 FROM transactions WHERE state = 'open' AND last_activity_at < ?`, cutoff,
